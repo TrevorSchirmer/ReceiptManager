@@ -194,17 +194,24 @@ without touching Outlook.
 
 ## 5. Install
 
+In the container's console (Proxmox web UI → the container → **Console**), one line:
+
 ```bash
-git clone https://github.com/TrevorSchirmer/ReceiptManager.git
-cd ReceiptManager
-sudo bash deploy/install.sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/TrevorSchirmer/ReceiptManager/main/deploy/install.sh)"
 ```
 
-Run it **inside the container**, not on the Proxmox host — the installer refuses
-if it detects it is on the node.
+The script clones itself, so there is nothing to fetch first. Run it **inside the
+container**, not on the Proxmox node — it refuses if it detects it is on the host.
 
-Needs outbound internet: PyPI for dependencies, unpkg for HTMX. The HTMX fetch
-is non-fatal — only the parse-rule tester's live preview uses it.
+From a checkout instead:
+
+```bash
+git clone https://github.com/TrevorSchirmer/ReceiptManager.git /opt/src
+bash /opt/src/deploy/install.sh
+```
+
+Needs outbound internet: GitHub, PyPI, and unpkg for HTMX. The HTMX fetch is
+non-fatal — only the parse-rule tester's live preview uses it.
 
 The installer is safe to re-run: the service user, directories, venv and systemd
 unit are all created idempotently.

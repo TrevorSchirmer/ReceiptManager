@@ -37,7 +37,7 @@ queued job that re-verifies first. A failed capture never deletes anything.
 On a fresh Debian 12 LXC, with `/data` mounted as its own volume:
 
 ```bash
-sudo bash deploy/install.sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/TrevorSchirmer/ReceiptManager/main/deploy/install.sh)"
 ```
 
 Then open `http://<container-ip>:8080/` and set an admin password.

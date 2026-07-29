@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 #
-# ReceiptManager installer for a Debian 12 unprivileged Proxmox LXC.
+# ReceiptManager installer for a Debian 12/13 unprivileged Proxmox LXC.
 #
 # Creates a service user, installs into /opt/receiptmanager with a venv, puts all
 # mutable state under /data (mount that separately so a container rebuild does
 # not destroy your receipts), and installs a systemd unit plus a nightly backup.
 #
+# From a checkout:
 #   bash deploy/install.sh
+#
+# Or standalone, with no checkout — it clones itself. Short enough to paste into
+# a Proxmox web console, which is the point:
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/TrevorSchirmer/ReceiptManager/main/deploy/install.sh)"
 #
 set -euo pipefail
 
@@ -14,7 +19,15 @@ APP_USER=receiptmanager
 APP_DIR=/opt/receiptmanager
 DATA_DIR=${RM_DATA_DIR:-/data}
 PORT=${RM_PORT:-8080}
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_URL=${RM_REPO_URL:-https://github.com/TrevorSchirmer/ReceiptManager.git}
+REPO_REF=${RM_REPO_REF:-main}
+
+# Resolved after the packages are installed: piped through curl there is no
+# BASH_SOURCE to derive a checkout from, so one is cloned instead.
+REPO_DIR=""
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+    REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
@@ -41,7 +54,18 @@ apt-get update -qq
 # all ship binary wheels, so there is no libheif/poppler/imagemagick to chase.
 apt-get install -y --no-install-recommends \
     python3 python3-venv python3-dev \
-    ca-certificates curl sqlite3 tzdata
+    ca-certificates curl git sqlite3 tzdata
+
+# Resolve the source. A checkout beside this script wins; otherwise clone, which
+# is what happens when the script is piped straight from curl.
+if [[ -z "$REPO_DIR" || ! -d "$REPO_DIR/app" ]]; then
+    REPO_DIR="$(mktemp -d)"
+    log "No local checkout — cloning ${REPO_URL} (${REPO_REF})"
+    git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$REPO_DIR" 2>&1 | sed 's/^/    /'
+    trap 'rm -rf "$REPO_DIR"' EXIT
+fi
+[[ -d "$REPO_DIR/app" ]] || die "No application source found at ${REPO_DIR}."
+log "Installing from ${REPO_DIR}"
 
 log "Creating service user ${APP_USER}"
 if ! id -u "$APP_USER" >/dev/null 2>&1; then

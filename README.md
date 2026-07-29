@@ -99,6 +99,7 @@ posted amount can differ, which is what the `final_amount` column is for.
 
 | Command | |
 |---|---|
+| `/whoami` | your Discord user ID and this channel's ID, for Settings |
 | `/pending` | charges still awaiting a receipt |
 | `/skip <code>` | mark as not needing a receipt |
 | `/note <code> <text>` | append a note |
@@ -107,7 +108,9 @@ posted amount can differ, which is what the `final_amount` column is for.
 
 All replies are ephemeral, so querying state doesn't clutter the channel that
 doubles as your receipt log. Mutating commands enforce the uploader allowlist —
-a slash command can alter a financial record just as an upload can.
+a slash command can alter a financial record just as an upload can. `/whoami` is
+exempt, since it is what you run *before* the allowlist exists and it reveals
+nothing the caller doesn't already know about themselves.
 
 ## Behaviour worth knowing
 

@@ -176,7 +176,7 @@ def test_slash_commands_are_registered():
     from app.discordbot.bot import ReceiptBot
 
     names = sorted(c.name for c in ReceiptBot().tree.get_commands())
-    assert names == ["cat", "note", "pending", "search", "skip"]
+    assert names == ["cat", "note", "pending", "search", "skip", "whoami"]
 
 
 def test_slash_skip_marks_no_receipt_required(env):

@@ -347,10 +347,14 @@ class ReceiptBot(discord.Client):
                 "Rejected receipt from unauthorized uploader %s (%s)",
                 message.author.id, message.author,
             )
+            # Include the ID so a legitimate person who was simply never added
+            # can be allowlisted without hunting for it.
             await _safe_reply(
                 message,
-                "⛔ You are not on this server's authorized uploader list, so this "
-                "receipt was not stored.",
+                f"⛔ You are not on the authorized uploader list, so this receipt "
+                f"was **not** stored.\n"
+                f"To allow this account, add `{message.author.id}` to "
+                f"_Settings → Discord → Allowed uploader IDs_.",
             )
             return
 

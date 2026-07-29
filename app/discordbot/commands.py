@@ -135,6 +135,27 @@ def register(tree: app_commands.CommandTree) -> None:
         )
         return False
 
+    @tree.command(
+        name="whoami",
+        description="Show your Discord user ID and this channel's ID, for Settings",
+    )
+    async def whoami(interaction: discord.Interaction) -> None:
+        """Setup helper.
+
+        Discord keeps relocating Developer Mode, and copying IDs is the one step
+        of setup that cannot be done from inside this app. Deliberately not
+        allowlist-gated: it reveals nothing the caller does not already know
+        about themselves, and it is what you run *before* the allowlist exists.
+        """
+        await interaction.response.send_message(
+            f"**Your user ID:** `{interaction.user.id}`\n"
+            f"**This channel's ID:** `{interaction.channel_id}`\n\n"
+            "Paste the user ID into _Settings → Discord → Allowed uploader IDs_ "
+            "(comma-separated for several people), and the channel ID into "
+            "_Channel ID_.",
+            ephemeral=True,
+        )
+
     @tree.command(name="pending", description="List charges still awaiting a receipt")
     async def pending(interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)

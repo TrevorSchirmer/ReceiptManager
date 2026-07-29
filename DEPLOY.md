@@ -98,12 +98,39 @@ https://discord.com/api/oauth2/authorize?client_id=<APP_ID>&permissions=109568&s
 it, capture still works and the file is still stored — the message just stays in
 the channel and the log says so.
 
-Then, with **Settings → Advanced → Developer Mode** on, right-click to copy:
+### Getting the channel ID and your user ID
 
-- the **channel ID** for the receipts channel
-- **your own user ID** (right-click your name) for the uploader allowlist
+Discord keeps moving Developer Mode, so use these instead — neither needs it.
 
-**You now have:** bot token, channel ID, your user ID.
+**Channel ID — read it off the URL.** Open Discord in a browser and click the
+channel. The address bar reads:
+
+```
+https://discord.com/channels/<SERVER_ID>/<CHANNEL_ID>
+```
+
+The second number is the channel ID.
+
+**Your user ID — let the bot tell you.** You do not need it to get started: leave
+**Allowed uploader IDs** blank at first (the app then accepts anyone in the
+channel), finish setup, and run **`/whoami`** in the channel. It replies
+privately with both your user ID and the channel ID. Paste the user ID into
+Settings and save.
+
+If someone is wrongly blocked later, the bot's rejection message includes the ID
+to add.
+
+<details>
+<summary>If you would rather use Developer Mode</summary>
+
+It has lived in a few places depending on your Discord version — look for
+**Advanced** in User Settings (older builds), or under **App Settings** in the
+current layout. Once on, right-click a channel or a username → *Copy ID*. On
+mobile it is under Settings → Advanced.
+
+</details>
+
+**You now have:** bot token, channel ID. (User ID comes from `/whoami` after setup.)
 
 ---
 
@@ -169,7 +196,9 @@ Do this before trusting it with a real charge.
    should see a `✅` confirmation, and both the notification and your upload
    should disappear.
 4. **Transactions** — the charge shows `receipt attached` with a thumbnail.
-5. **`/pending` in Discord** — replies privately, visible only to you.
+5. **`/whoami` in Discord** — replies privately with your user ID; paste it
+   into **Allowed uploader IDs** and save. Then **`/pending`** to confirm
+   commands still work once the allowlist is enforced.
 6. **Export** — pull a ZIP and confirm the CSV and receipt filenames line up.
 7. **Spend a real dollar** on the card and confirm the alert flows end to end.
 

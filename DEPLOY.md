@@ -134,15 +134,49 @@ mobile it is under Settings → Advanced.
 
 ---
 
-## 4. Outlook folder and rule
+## 4. Card alerts, Outlook folder, and rule
 
-Create a folder (e.g. `Card Alerts`) and a server-side rule moving your card
-alerts into it. Match on sender — `americanexpress@welcome.americanexpress.com`
-for Amex.
+### First: check the alert threshold at the card issuer
 
-Make it a **server-side rule** (created in Outlook on the web, or without the
-"on this computer only" flag), otherwise it only runs when your desktop Outlook
-is open and the app will see nothing.
+This decides whether the system sees everything or only part of it. Amex's
+"Large Purchase Approved" alert ships with a **$50 threshold** — the email itself
+says so:
+
+> *we're letting you know that this purchase was more than $50.00. You can change
+> the dollar amount of these large purchase notifications online.*
+
+Below that, no email is sent at all: nothing reaches Outlook, nothing reaches
+this app, and no receipt is ever chased. Small charges are exactly the ones that
+go missing at tax time.
+
+In **Amex → Account Services → Email & Push Notifications**, lower the threshold
+to the minimum, or switch to an all-transactions alert if the issuer offers one
+(a different subject line just means a second parse rule). If the threshold will
+not go to zero, you have a known blind spot — decide deliberately whether that is
+acceptable.
+
+### Then the folder and rule
+
+Create a folder (e.g. `Card Alerts`) and a rule moving alerts into it. Match on
+**sender plus a subject keyword**, not sender alone — issuers send marketing from
+the same domain, and every promo landing in the folder becomes a
+`needs attention` charge announced in Discord.
+
+For Amex: from `AmericanExpress@welcome.americanexpress.com`, subject contains
+`Approved`.
+
+Make it a **server-side rule** — build it in Outlook on the web, or leave the
+"on this computer only" flag off. A desktop rule only runs while Outlook is open,
+and the app would see nothing for days at a time.
+
+Marking the mail read in the rule is fine. Graph reports that as a change and
+re-delivers the message, but ingest deduplicates on `internetMessageId`, so the
+second delivery is a no-op. It does remove the unread pile as a manual "ingest
+has stopped" signal, which makes the heartbeat in step 6 your backstop.
+
+A second filter layer lives in the app (Settings → *Only process mail from* /
+*subjects containing*), so extra mail slipping into the folder can be excluded
+without touching Outlook.
 
 ---
 

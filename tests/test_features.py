@@ -407,3 +407,42 @@ def test_orphan_file_can_be_deleted_but_an_attached_one_cannot(tmp_path, monkeyp
         assert not storage.absolute_path(rel).exists()
     finally:
         c.__exit__(None, None, None)
+
+
+def test_dead_jobs_can_be_requeued(tmp_path, monkeypatch):
+    """A dead job must be recoverable once its cause is fixed.
+
+    Retries are exhausted after eight attempts, so without this a notification
+    that failed while Discord was misconfigured is never sent — correcting the
+    setting does nothing on its own.
+    """
+    from sqlalchemy import select
+
+    from app.db import session_scope
+    from app.models import Job, JobStatus
+    from app.services import jobs
+
+    c = _client(tmp_path, monkeypatch)
+    try:
+        with session_scope() as db:
+            job = jobs.enqueue(db, kind="discord.notify", payload={"transaction_id": 1})
+            job.status = JobStatus.dead
+            job.attempts = 8
+            job.last_error = "NotConnected: Discord gateway is not connected"
+            db.add(job)
+
+        # Surfaced on the health page with its error, not buried in the database.
+        page = c.get("/health").text
+        assert "Failed jobs" in page
+        assert "Discord gateway is not connected" in page
+
+        r = c.post("/health/retry-dead", data={"csrf_token": _token(c)}, follow_redirects=False)
+        assert r.status_code == 303
+
+        with session_scope() as db:
+            revived = db.scalar(select(Job))
+            assert revived.status == JobStatus.pending
+            assert revived.attempts == 0, "attempt counter must reset or it dies immediately"
+            assert revived.last_error is None
+    finally:
+        c.__exit__(None, None, None)

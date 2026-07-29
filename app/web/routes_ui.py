@@ -582,6 +582,29 @@ async def receipt_thumb(
     )
 
 
+@router.post("/health/retry-dead")
+async def retry_dead_jobs(
+    csrf_token: str = Form(""),
+    auth=Depends(require_user),
+    db: OrmSession = Depends(get_db),
+):
+    """Put dead jobs back in the queue after fixing whatever broke them.
+
+    Retries are exhausted after eight attempts, so a job that failed while a
+    credential was wrong stays dead permanently. Correcting the setting does not
+    resend it — this is what does.
+    """
+    user, session = auth
+    verify_csrf(session, csrf_token)
+    count = jobs.revive_dead(db)
+    if count:
+        db.add(AuditLog(actor=user.username, action="jobs.revived", detail=str(count)))
+    return redirect_with(
+        "/health",
+        success=f"Requeued {count} job(s)." if count else "No dead jobs to requeue.",
+    )
+
+
 @router.get("/health")
 async def health(
     request: Request,

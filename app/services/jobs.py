@@ -183,6 +183,38 @@ def _with_session(fn: Callable[[Session], Any]) -> Any:
         return fn(db)
 
 
+def dead_jobs(db: Session, limit: int = 10) -> list[Job]:
+    """Jobs that exhausted their retries, newest first.
+
+    Surfaced on the health page because the error text is the whole diagnosis —
+    "Discord gateway is not connected" and "Missing Access" mean very different
+    fixes, and neither is guessable from the outside.
+    """
+    return list(
+        db.scalars(
+            select(Job).where(Job.status == JobStatus.dead).order_by(Job.id.desc()).limit(limit)
+        )
+    )
+
+
+def revive_dead(db: Session) -> int:
+    """Return dead jobs to the queue with their attempt counter reset.
+
+    Without this, a job that failed while a credential was wrong stays dead for
+    good: fixing the configuration does not resend the notification, and the
+    charge is silently never announced.
+    """
+    revived = 0
+    for job in db.scalars(select(Job).where(Job.status == JobStatus.dead)):
+        job.status = JobStatus.pending
+        job.attempts = 0
+        job.next_run_at = utcnow()
+        job.last_error = None
+        db.add(job)
+        revived += 1
+    return revived
+
+
 def queue_stats(db: Session) -> dict[str, int]:
     """Counts for the health page."""
     return {

@@ -74,6 +74,27 @@
       </dl>
     </section>
 
+    {% if health.dead_jobs %}
+      <section class="card card-pad mb-3">
+        <h2 class="mb-3">Failed jobs</h2>
+        <p class="muted" style="margin-top:-8px">
+          The error text is the diagnosis — fix the cause, then requeue them from
+          the panel on the right.
+        </p>
+        <div class="col gap-3">
+          {% for job in health.dead_jobs %}
+            <div>
+              <div class="row gap-2 wrap">
+                <span class="mono">{{ job.kind }}</span>
+                <span class="muted">after {{ job.attempts }} attempts · {{ job.created_at | when(tz) }}</span>
+              </div>
+              <pre class="raw-body" style="max-height:150px">{{ job.last_error or '(no error recorded)' }}</pre>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
     <section class="card card-pad">
       <h2 class="mb-3">Recent activity</h2>
       {% if recent_errors %}
@@ -121,9 +142,15 @@
       {% if health.jobs.dead %}
         <p class="hint mt-3">
           Dead jobs exhausted their retries. Receipts are never deleted on a failed
-          capture, so the underlying files are safe — but the Discord side effect
-          did not complete.
+          capture, so the underlying files are safe — but the side effect did not
+          complete, and fixing the cause does not resend it on its own.
         </p>
+        <form method="post" action="/health/retry-dead" class="mt-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-primary btn-sm" type="submit">
+            Requeue {{ health.jobs.dead }} dead job(s)
+          </button>
+        </form>
       {% endif %}
     </section>
   </aside>

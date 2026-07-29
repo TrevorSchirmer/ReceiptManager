@@ -142,6 +142,7 @@ def health_snapshot(db: OrmSession) -> dict[str, Any]:
     last_mail = _parse(get_setting(db, LAST_MAIL_KEY))
     poll_error = get_setting(db, LAST_ERROR_KEY) or None
     stats = jobs.queue_stats(db)
+    dead_jobs = jobs.dead_jobs(db)
 
     # A restore without the matching secret.key leaves credentials unreadable.
     unreadable = [
@@ -188,6 +189,7 @@ def health_snapshot(db: OrmSession) -> dict[str, Any]:
         "mail_stale": mail_stale,
         "heartbeat_hours": heartbeat_hours,
         "jobs": stats,
+        "dead_jobs": dead_jobs,
     }
 
 

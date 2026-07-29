@@ -1,11 +1,30 @@
+# Secrets — app/config.py reads a .env file, so this must never be committed.
+.env
+.env.*
+!.env.example
+secret.key
+*.key
+*.pem
+
+# Data — receipts and the database live under the data dir.
+data/
+devdata/
+*.sqlite
+*.db
+*.sqlite3
+
+# Python
 __pycache__/
 *.py[cod]
 .venv/
-devdata/
-data/
-*.sqlite
-*.db
-secret.key
+venv/
+*.egg-info/
+
+# Tooling
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.DS_Store
+
+# Vendored at install time, not committed.
 app/static/htmx.min.js

@@ -1,7 +1,9 @@
 """Parsing a real American Express "Large Purchase Approved" alert.
 
-The fixture is a genuine Amex email with the cardholder name, address and
-account ending replaced — real markup, redacted data. It is 63 KB of nested
+The fixture is a genuine Amex email with the cardholder name, account ending
+and every tracking token replaced — real markup, redacted data. The tracking
+parameters matter as much as the name: `comm_track_id` is per-send and ties the
+message back to the recipient. It is 63 KB of nested
 table HTML, which is exactly the shape that makes naive tag-stripping fail: get
 the newlines wrong and the merchant, amount and date collapse onto one line and
 no regex can separate them.

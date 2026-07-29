@@ -53,6 +53,9 @@ _NUMBER_RUN_RE = re.compile(r"[\d.,]*\d")
 _BETWEEN_DIGITS_SPACE_RE = re.compile(r"(?<=\d)\s+(?=\d)")
 _NON_DIGIT_RE = re.compile(r"\D")
 
+# Visa/Mastercard show 4; Amex shows 5. The column allows 8 for headroom.
+MAX_CARD_ENDING_DIGITS = 8
+
 
 @dataclass(slots=True)
 class ParsedFields:
@@ -61,7 +64,7 @@ class ParsedFields:
     merchant: str
     amount_minor: int
     currency: str
-    card_last4: str | None
+    card_ending: str | None
     cardholder: str | None
     occurred_at: datetime | None
 
@@ -198,12 +201,18 @@ def apply_rule(rule: ParseRule, body_text: str) -> ParseOutcome:
         raw_merchant = groups.get("merchant")
         merchant = _INLINE_SPACES_RE.sub(" ", raw_merchant).strip() if raw_merchant else ""
 
-        card_last4 = None
-        raw_last4 = groups.get("card_last4")
-        if raw_last4:
-            digits = _NON_DIGIT_RE.sub("", raw_last4)
+        # Accept the legacy group name too, so rules written against the older
+        # field keep working.
+        card_ending = None
+        raw_card = groups.get("card_ending") or groups.get("card_last4")
+        if raw_card:
+            digits = _NON_DIGIT_RE.sub("", raw_card)
+            # Keep what the issuer actually showed rather than forcing four
+            # digits: Amex prints a five-digit account ending, and truncating it
+            # means the export no longer matches the statement it is checked
+            # against. Trailing digits are kept if the capture is over-long.
             if len(digits) >= 4:
-                card_last4 = digits[-4:]
+                card_ending = digits[-MAX_CARD_ENDING_DIGITS:]
 
         raw_cardholder = groups.get("cardholder")
         cardholder = (
@@ -218,7 +227,7 @@ def apply_rule(rule: ParseRule, body_text: str) -> ParseOutcome:
                 merchant=merchant,
                 amount_minor=amount_minor,
                 currency=currency,
-                card_last4=card_last4,
+                card_ending=card_ending,
                 cardholder=cardholder,
                 occurred_at=occurred_at,
             ),
@@ -318,7 +327,7 @@ def test_rule(
             "amount_minor": fields.amount_minor,
             "amount_display": str(amount_display),
             "currency": fields.currency,
-            "card_last4": fields.card_last4,
+            "card_ending": fields.card_ending,
             "cardholder": fields.cardholder,
             "occurred_at": fields.occurred_at.isoformat() if fields.occurred_at else None,
         }

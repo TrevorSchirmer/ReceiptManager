@@ -189,8 +189,9 @@ class ParseRule(Base):
     subject_match: Mapped[str] = mapped_column(String(255), default="")
     match_is_regex: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # Regex with named groups: merchant, amount, currency, card_last4,
+    # Regex with named groups: merchant, amount, currency, card_ending,
     # cardholder, occurred_at. Applied to the normalized plain-text body.
+    # `card_last4` is accepted as an alias for `card_ending`.
     body_regex: Mapped[str] = mapped_column(Text)
 
     # Fallbacks for fields the regex does not capture.
@@ -280,7 +281,7 @@ class Transaction(Base):
     merchant: Mapped[str] = mapped_column(String(255), default="")
     amount_minor: Mapped[int] = mapped_column(Integer, default=0)
     currency: Mapped[str] = mapped_column(String(3), default="USD")
-    card_last4: Mapped[Optional[str]] = mapped_column(String(4))
+    card_ending: Mapped[Optional[str]] = mapped_column(String(8))
     cardholder: Mapped[Optional[str]] = mapped_column(String(128))
 
     status: Mapped[TransactionStatus] = mapped_column(

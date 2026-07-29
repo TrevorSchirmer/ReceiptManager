@@ -105,7 +105,7 @@ def test_parse_and_simulate_creates_transaction(client):
             "subject_match": "",
             "body_regex": (
                 r"charge of (?P<amount>[$\d,.]+)\s+was made at (?P<merchant>.+?)\s+"
-                r"on your card ending (?P<card_last4>\d{4})"
+                r"on your card ending (?P<card_ending>\d{4})"
             ),
             "default_currency": "USD",
         },
@@ -136,7 +136,7 @@ def test_parse_and_simulate_creates_transaction(client):
         assert tx.merchant == "AMAZON MARKETPLACE"
         assert tx.amount_minor == 4321   # integer cents, never a float
         assert tx.currency == "USD"
-        assert tx.card_last4 == "4417"
+        assert tx.card_ending == "4417"
 
     # It should be visible and searchable in the UI.
     assert "AMAZON MARKETPLACE" in client.get("/transactions").text

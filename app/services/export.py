@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 CSV_COLUMNS: tuple[str, ...] = (
     "code", "date", "time", "merchant", "amount", "currency", "final_amount",
-    "card_last4", "cardholder", "status", "category", "notes",
+    "card_ending", "cardholder", "status", "category", "notes",
     "receipt_count", "receipt_files",
 )
 
@@ -146,7 +146,7 @@ def build_csv(transactions: Sequence[Transaction], *, tz_name: str = "UTC") -> s
             money_plain(tx.amount_minor),
             (tx.currency or "").upper(),
             money_plain(tx.amount_final_minor) if tx.amount_final_minor is not None else "",
-            tx.card_last4 or "",
+            tx.card_ending or "",
             tx.cardholder or "",
             tx.status.value if isinstance(tx.status, TransactionStatus) else str(tx.status),
             tx.category or "",

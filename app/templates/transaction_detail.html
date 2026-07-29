@@ -133,7 +133,7 @@
       <dl class="kv">
         <dt>Code</dt><dd class="mono">#{{ tx.short_code }}</dd>
         <dt>Occurred</dt><dd>{{ tx.occurred_at | when_full(tz) }}</dd>
-        <dt>Card</dt><dd>{% if tx.card_last4 %}•••• {{ tx.card_last4 }}{% else %}—{% endif %}</dd>
+        <dt>Card</dt><dd>{% if tx.card_ending %}•••• {{ tx.card_ending }}{% else %}—{% endif %}</dd>
         <dt>Cardholder</dt><dd>{{ tx.cardholder or '—' }}</dd>
         <dt>Currency</dt><dd>{{ tx.currency }}</dd>
         <dt>Notified</dt><dd>{% if tx.notified_at %}{{ tx.notified_at | when_full(tz) }}{% else %}—{% endif %}</dd>

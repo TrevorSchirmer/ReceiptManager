@@ -286,7 +286,7 @@ async def reparse(
             tx.merchant = fields.merchant or tx.merchant
             tx.amount_minor = fields.amount_minor
             tx.currency = fields.currency
-            tx.card_last4 = fields.card_last4 or tx.card_last4
+            tx.card_ending = fields.card_ending or tx.card_ending
             tx.cardholder = fields.cardholder or tx.cardholder
             if fields.occurred_at:
                 tx.occurred_at = fields.occurred_at

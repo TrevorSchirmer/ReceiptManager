@@ -160,7 +160,7 @@ def ingest_message(db: Session, message: GraphMessage) -> Transaction | None:
             merchant="(unparsed)",
             amount_minor=0,
             currency=sk.get_str(db, sk.DEFAULT_CURRENCY),
-            card_last4=None,
+            card_ending=None,
             cardholder=None,
             occurred_at=None,
         )
@@ -179,7 +179,7 @@ def ingest_message(db: Session, message: GraphMessage) -> Transaction | None:
             merchant=fields.merchant or "(unknown)",
             amount_minor=fields.amount_minor,
             currency=fields.currency,
-            card_last4=fields.card_last4,
+            card_ending=fields.card_ending,
             cardholder=fields.cardholder,
             status=status,
         ),

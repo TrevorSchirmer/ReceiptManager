@@ -50,8 +50,8 @@ logger = logging.getLogger(__name__)
 def render_notification(tx: Transaction, tz: str) -> str:
     lines = [f"**#{tx.short_code}** · **{money(tx.amount_minor, tx.currency)}** · {tx.merchant}"]
     meta = []
-    if tx.card_last4:
-        meta.append(f"Card ••{tx.card_last4}")
+    if tx.card_ending:
+        meta.append(f"Card ••{tx.card_ending}")
     meta.append(when(tx.occurred_at, tz))
     lines.append(" · ".join(meta))
     if tx.status == TransactionStatus.needs_attention:

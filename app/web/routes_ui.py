@@ -135,7 +135,7 @@ async def transactions(
             Transaction.short_code.ilike(like),
             Transaction.notes.ilike(like),
             Transaction.category.ilike(like),
-            Transaction.card_last4.ilike(like),
+            Transaction.card_ending.ilike(like),
         ]
         # Amount search: "43.21" or "4321" both find the same charge.
         digits = q.replace(",", "").replace("$", "").strip()

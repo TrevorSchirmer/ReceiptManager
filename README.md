@@ -70,6 +70,23 @@ which is what **Re-parse stalled emails** is for.
 Then hit **Simulate email** in Settings to push a fake charge through the whole
 pipeline without spending money.
 
+### A working rule: Amex "Large Purchase Approved"
+
+Sender contains `americanexpress.com`, subject contains `Large Purchase`:
+
+```regex
+Account Ending:\s*(?P<card_ending>\d+).*?\n(?P<merchant>[^\n]{2,60})\n+\$(?P<amount>[\d,]+\.\d{2})\*?\n+(?P<occurred_at>[A-Za-z]{3},\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4})
+```
+
+It anchors on structure — an account-ending line, then a merchant line
+immediately followed by an amount line — rather than on Amex's marketing copy,
+so wording changes won't break it. The amount is what disambiguates the
+merchant from the other capitalised lines earlier in the message.
+
+Note that Amex amounts carry a `*`: the alert is a pre-authorisation and the
+posted amount can differ, which is what the `final_amount` column is for.
+`tests/test_amex.py` locks this format in against a redacted real email.
+
 ## Slash commands
 
 | Command | |

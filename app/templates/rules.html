@@ -9,7 +9,7 @@
     <p class="muted">
       Rules run in priority order against the <strong>normalized plain text</strong> of
       each email — never the raw HTML. Use named capture groups:
-      <code class="mono">merchant, amount, currency, card_last4, cardholder, occurred_at</code>.
+      <code class="mono">merchant, amount, currency, card_ending, cardholder, occurred_at</code>.
       Only <code class="mono">amount</code> is required.
     </p>
   </div>
@@ -180,7 +180,7 @@
       <div class="field mb-3">
         <label for="body_regex">Body regex</label>
         <textarea id="body_regex" name="body_regex" rows="4" class="mono" required
-          placeholder="charge of (?P&lt;amount&gt;[$\d,.]+)\s+was made at (?P&lt;merchant&gt;.+?)\s+on your card ending (?P&lt;card_last4&gt;\d{4})"></textarea>
+          placeholder="charge of (?P&lt;amount&gt;[$\d,.]+)\s+was made at (?P&lt;merchant&gt;.+?)\s+on your card ending (?P&lt;card_ending&gt;\d{4})"></textarea>
         <span class="hint">
           Case-insensitive, multiline, dot-matches-newline. This placeholder matches the
           sample body in Settings → Simulate email, so you can paste both to try it out.

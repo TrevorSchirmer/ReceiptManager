@@ -9,11 +9,23 @@ Work top to bottom — steps 2 and 3 gather credentials that step 6 needs.
 
 ## 1. Provision the LXC
 
-Debian 12, unprivileged, with `/data` as its own mount so a container rebuild
-does not take your receipts with it.
+Debian 12 or 13, unprivileged, with `/data` as its own mount so a container
+rebuild does not take your receipts with it.
+
+Download the template first — a fresh Proxmox host has none, and the exact
+version string changes over time, so list rather than guess:
 
 ```bash
-pct create 110 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
+pveam update
+pveam available --section system | grep debian-1
+pveam download local <exact-name-from-that-list>
+```
+
+Debian 12 ships Python 3.11 and Debian 13 ships 3.13; both work. Prefer 13 for
+the longer support window.
+
+```bash
+pct create 110 local:vztmpl/<exact-name-from-that-list> \
   --hostname receipts \
   --cores 2 --memory 2048 --swap 512 \
   --rootfs local-lvm:8 \

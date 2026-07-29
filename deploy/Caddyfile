@@ -1,0 +1,36 @@
+# Optional TLS front-end for ReceiptManager.
+#
+# Only needed if you are NOT using Tailscale. `tailscale serve` already provides
+# a real, publicly-trusted certificate with no config, so prefer that.
+#
+#   apt-get install -y caddy
+#   cp deploy/Caddyfile /etc/caddy/Caddyfile   # edit the hostname first
+#   systemctl restart caddy
+#
+# Then set RM_SECURE_COOKIES=true in the systemd unit and restart the service,
+# so the session cookie is only ever sent over TLS.
+
+receipts.lan {
+	# Caddy's internal CA. Browsers will warn until you trust the root:
+	#   /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt
+	# Swap `tls internal` for a real domain + DNS challenge if you have one.
+	tls internal
+
+	reverse_proxy 127.0.0.1:8080 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	# Receipts are financial records; keep them out of any shared cache.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+
+	# Phone photos of receipts are a few MB; leave generous headroom.
+	request_body {
+		max_size 32MB
+	}
+}

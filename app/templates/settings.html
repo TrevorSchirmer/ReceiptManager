@@ -57,6 +57,16 @@
           {{ field(key, values, mask) }}
         {% endfor %}
       </div>
+
+      {% if prefix == 'graph.' %}
+        <div class="row gap-2 wrap mt-3">
+          <button class="btn" type="button" id="folder-lookup">Look up mail folders</button>
+          <span class="hint" id="folder-status">
+            Save the tenant, client and mailbox first, then look up the folder ID.
+          </span>
+        </div>
+        <div id="folder-results" class="mt-3"></div>
+      {% endif %}
     </section>
   {% endfor %}
 
@@ -93,4 +103,59 @@
     <button class="btn" type="submit">Simulate</button>
   </form>
 </section>
+
+<script>
+// Folder lookup. Progressive enhancement: the folder ID can always be typed in
+// by hand, this just saves finding it through a manual Graph call.
+(function () {
+  const button = document.getElementById('folder-lookup');
+  if (!button) return;
+  const status = document.getElementById('folder-status');
+  const results = document.getElementById('folder-results');
+  const idInput = document.getElementById('graph.folder_id');
+  const nameInput = document.getElementById('graph.folder_name');
+
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    status.textContent = 'Asking Microsoft Graph…';
+    results.innerHTML = '';
+    try {
+      const body = new FormData();
+      body.append('csrf_token', '{{ csrf_token }}');
+      const response = await fetch('/settings/mail-folders', { method: 'POST', body });
+      const data = await response.json();
+
+      if (data.error) {
+        status.innerHTML = '';
+        results.innerHTML =
+          '<p class="field-error"></p>';
+        results.querySelector('p').textContent = data.error;
+        return;
+      }
+
+      status.textContent = data.folders.length + ' folder(s) found — pick one.';
+      const select = document.createElement('select');
+      select.innerHTML = '<option value="">Choose a folder…</option>';
+      for (const folder of data.folders) {
+        const option = document.createElement('option');
+        option.value = folder.id;
+        option.textContent = folder.name;      // textContent, never innerHTML
+        option.selected = folder.id === idInput.value;
+        select.appendChild(option);
+      }
+      select.addEventListener('change', () => {
+        idInput.value = select.value;
+        if (nameInput) nameInput.value = select.selectedOptions[0].textContent;
+        status.textContent = 'Selected — remember to Save settings.';
+      });
+      results.appendChild(select);
+    } catch (err) {
+      status.textContent = '';
+      results.innerHTML = '<p class="field-error">Lookup failed — check the Graph credentials.</p>';
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+</script>
 {% endblock %}

@@ -42,6 +42,14 @@ sudo bash deploy/install.sh
 
 Then open `http://<container-ip>:8080/` and set an admin password.
 
+**[DEPLOY.md](DEPLOY.md) is the full checklist** — provisioning the container,
+the Azure app registration, the Discord bot, TLS, and what to verify before
+trusting it with a real charge.
+
+> The app serves plain HTTP and binds `0.0.0.0`. Front it with Tailscale (which
+> also gets you phone access and a real certificate via `tailscale serve`) or
+> with `deploy/Caddyfile`, then set `RM_SECURE_COOKIES=true`.
+
 ## Configure
 
 **Microsoft Graph** — app-only credentials with the `Mail.Read` *application*

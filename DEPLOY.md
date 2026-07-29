@@ -295,6 +295,80 @@ Behind either, add `Environment=RM_SECURE_COOKIES=true` to
 `/etc/systemd/system/receiptmanager.service` and restart, so the session cookie
 is never sent in the clear.
 
+### Internal-only HTTPS behind Nginx Proxy Manager
+
+You can have a real, publicly-trusted certificate for a hostname that is never
+reachable from the internet. The trick is **DNS-01 validation**: Let's Encrypt
+proves you own the name via a TXT record and never connects to your server, so
+no inbound port is required and the name need not resolve publicly at all.
+
+Keeping it internal takes **two independent controls**. Do both — the first alone
+is not a security boundary.
+
+**1. DNS that only answers internally.** On your internal resolver (Pi-hole,
+AdGuard, pfSense, UniFi), point `receipts.example.com` at the NPM host's LAN
+address. Create no public A record. Split-horizon like this keeps your internal
+addressing out of public DNS entirely.
+
+*(A public A record containing an RFC1918 address also works and is simpler, but
+it publishes your internal layout, and resolvers with DNS-rebinding protection —
+including Pi-hole and many routers — will discard the answer.)*
+
+**2. An NPM Access List, which is the control that actually enforces it.** Your
+NPM already answers on 80/443 from the internet, so anyone who learns the
+hostname can reach the service by sending a `Host:` header straight to your
+public IP. DNS does not stop that; an allow-list does.
+
+In NPM → **Access Lists → Add**:
+
+| | |
+|---|---|
+| Satisfy | Any |
+| Authorization | leave empty |
+| Access | `allow 192.168.0.0/16`, `allow 10.0.0.0/8`, `allow 172.16.0.0/12`, then `deny all` |
+
+Then **SSL Certificates → Add → Let's Encrypt**, tick **Use a DNS Challenge**,
+choose your DNS provider and supply an API token. A wildcard (`*.example.com`)
+requires DNS-01 anyway and covers future internal hosts in one certificate.
+
+Then **Proxy Hosts → Add**:
+
+- Domain: `receipts.example.com`
+- Forward to: `http` → the container's IP → `8080`
+- **Access List:** the one created above ← the step that does the enforcing
+- SSL tab: the DNS-01 certificate, **Force SSL**, HTTP/2, HSTS
+- Advanced tab:
+  ```nginx
+  client_max_body_size 32m;
+  proxy_read_timeout 300s;   # large ZIP exports
+  ```
+
+Finally, tell the app it is behind a proxy — add to
+`/etc/systemd/system/receiptmanager.service`:
+
+```ini
+Environment=RM_BASE_URL=https://receipts.example.com
+Environment=RM_SECURE_COOKIES=true
+Environment=RM_FORWARDED_ALLOW_IPS=<NPM's IP>
+```
+
+```bash
+systemctl daemon-reload && systemctl restart receiptmanager
+```
+
+`RM_SECURE_COOKIES=true` marks the session cookie Secure, so **plain-HTTP access
+can no longer log in** — the browser withholds the cookie. That is the point, but
+it does mean `http://<container-ip>:8080` stops working as a fallback. Leave that
+port reachable on the LAN for recovery, or be ready to unset the variable.
+
+`RM_FORWARDED_ALLOW_IPS` should name the proxy. Left at `*`, anything that can
+reach port 8080 directly can forge its client IP in the logs and in login
+throttling.
+
+**Most robust variant:** run a *second* NPM instance that is not port-forwarded
+at all, and put internal services behind that one. Then no combination of DNS
+and `Host` headers can reach them from outside, because nothing is listening.
+
 **Two-factor.** Account → set up TOTP. Worth doing the moment this is reachable
 beyond the LAN.
 

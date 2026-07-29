@@ -101,7 +101,8 @@ posted amount can differ, which is what the `final_amount` column is for.
 |---|---|
 | `/whoami` | your Discord user ID and this channel's ID, for Settings |
 | `/pending` | charges still awaiting a receipt |
-| `/skip <code>` | mark as not needing a receipt |
+| `/skip <code>` | mark this one charge as not needing a receipt |
+| `/silence <code>` | stop asking for receipts from that merchant, ever |
 | `/note <code> <text>` | append a note |
 | `/cat <code> <category>` | set the accounting category |
 | `/search <query>` | find by merchant, code, amount or note |
@@ -117,10 +118,15 @@ nothing the caller doesn't already know about themselves.
 **Nothing is ever dropped.** If no rule matches, the charge is still created (as
 `needs attention`, with the raw body kept) and still posted to Discord.
 
-**Merchant auto-rules.** Charges matching a merchant pattern are filed
-automatically and **never announced**. This is for recurring SaaS: without it the
-bot nags monthly for a receipt that will never arrive, and that noise trains you
-to ignore the channel — which is how genuine receipts start getting missed.
+**Silencing a merchant.** For subscriptions and anything else that will never
+have a receipt worth keeping. Use the button on any charge from that merchant,
+or `/silence <code>` in Discord. It files every outstanding charge from them,
+withdraws the requests already sitting in the channel, and stops announcing
+future ones. Charges that already have a receipt are left alone.
+
+This matters more than it sounds: without it the bot nags monthly for a receipt
+that will never arrive, and that noise trains you to ignore the channel — which
+is how genuine receipts start getting missed. Manage them under Parse rules.
 
 **Refunds** (negative amounts) link back to the charge they reverse, matched on
 merchant and amount. A charge already claimed by one refund won't be claimed by

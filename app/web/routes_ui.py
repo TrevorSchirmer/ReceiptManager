@@ -348,6 +348,45 @@ async def detach(
     return redirect_with(target, success="Receipt moved to the orphan queue.")
 
 
+@router.post("/transactions/{code}/silence")
+async def silence_merchant_route(
+    code: str,
+    csrf_token: str = Form(""),
+    pattern: str = Form(""),
+    auth=Depends(require_user),
+    db: OrmSession = Depends(get_db),
+):
+    """Stop chasing receipts from this charge's merchant.
+
+    Offered here because this is where the thought occurs — looking at a
+    subscription that has asked for a receipt it will never have.
+    """
+    user, session = auth
+    verify_csrf(session, csrf_token)
+
+    tx = db.scalar(select(Transaction).where(Transaction.short_code == code))
+    if tx is None:
+        raise HTTPException(status_code=404, detail="No such transaction")
+
+    match = (pattern or tx.merchant).strip()
+    if not match:
+        return redirect_with(f"/transactions/{code}", error="No merchant to silence.")
+
+    from app.services.ingest import silence_merchant
+
+    rule, affected = silence_merchant(db, match)
+    db.add(AuditLog(actor=user.username, action="merchant.silenced",
+                    entity="merchant_rule", entity_id=str(rule.id),
+                    detail=f"{match!r}; {affected} charge(s) filed"))
+    return redirect_with(
+        f"/transactions/{code}",
+        success=(
+            f"Silenced {match!r}. {affected} outstanding charge(s) filed; "
+            "future ones will not be announced."
+        ),
+    )
+
+
 @router.post("/transactions/{code}/notify")
 async def resend_notification(
     code: str,

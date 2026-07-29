@@ -91,6 +91,30 @@ def _mutate(code: str, actor: str, **changes: Any) -> str:
         return f"✅ {_render(tx, tz)}\n{'; '.join(applied)}"
 
 
+def _silence(code: str, actor: str) -> str:
+    """Silence the merchant behind a charge, from Discord."""
+    with session_scope() as db:
+        tx = db.scalar(select(Transaction).where(Transaction.short_code == code.lstrip("#")))
+        if tx is None:
+            return f"⚠️ No charge `#{code.lstrip('#')}`."
+        merchant = tx.merchant
+
+        from app.services.ingest import silence_merchant
+
+        _rule, affected = silence_merchant(db, merchant)
+        db.add(
+            AuditLog(actor=f"discord:{actor}", action="merchant.silenced",
+                     entity="transaction", entity_id=tx.short_code,
+                     detail=f"{merchant!r}; {affected} charge(s) filed")
+        )
+        return (
+            f"🔇 **{merchant}** silenced.\n"
+            f"{affected} outstanding charge(s) filed and their requests withdrawn. "
+            f"Future ones will not be announced.\n"
+            f"_Adjust or undo this under Parse rules in the web UI._"
+        )
+
+
 def _search(query: str) -> str:
     with session_scope() as db:
         tz = sk.get_str(db, sk.TIMEZONE)
@@ -189,6 +213,19 @@ def register(tree: app_commands.CommandTree) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
         reply = await run_db(_mutate, code, str(interaction.user), category=category)
         await interaction.followup.send(reply, ephemeral=True)
+
+    @tree.command(
+        name="silence",
+        description="Stop asking for receipts from this charge's merchant",
+    )
+    @app_commands.describe(code="The charge code, e.g. 1042")
+    async def silence(interaction: discord.Interaction, code: str) -> None:
+        if not await guard(interaction):
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        await interaction.followup.send(
+            await run_db(_silence, code, str(interaction.user)), ephemeral=True
+        )
 
     @tree.command(name="search", description="Find charges by merchant, code, amount or note")
     @app_commands.describe(query="Merchant, #code, amount, or note text")

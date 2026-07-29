@@ -162,6 +162,27 @@
     </section>
 
     <section class="card card-pad mt-3">
+      <h2 class="mb-3">Silence this merchant</h2>
+      <p class="hint mb-3">
+        For subscriptions and anything else that will never have a receipt worth
+        keeping. Files this charge and every other outstanding one from the same
+        merchant, withdraws their requests from Discord, and stops announcing
+        future ones. Charges that already have a receipt are left alone.
+      </p>
+      <form method="post" action="/transactions/{{ tx.short_code }}/silence"
+            onsubmit="return confirm('Stop asking for receipts from this merchant?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field mb-3">
+          <label for="silence-pattern">Merchant contains</label>
+          <input id="silence-pattern" name="pattern" type="text" value="{{ tx.merchant }}">
+          <span class="hint">Shorten it to catch variations, e.g. just <code class="mono">GITHUB</code>.</span>
+        </div>
+        <button class="btn" type="submit">Never ask for receipts from this merchant</button>
+      </form>
+      <p class="hint mt-3">Manage all of these under <a href="/rules">Parse rules</a>.</p>
+    </section>
+
+    <section class="card card-pad mt-3">
       <h2 class="mb-3">Discord</h2>
       <p class="hint mb-3">
         {% if tx.notify_message_id %}

@@ -62,6 +62,76 @@ def apply_merchant_rules(db: Session, tx: Transaction) -> MerchantRule | None:
     return None
 
 
+def silence_merchant(
+    db: Session,
+    pattern: str,
+    *,
+    category: str | None = None,
+    note: str | None = None,
+    is_regex: bool = False,
+) -> tuple[MerchantRule, int]:
+    """Stop chasing receipts from a merchant, now and in future.
+
+    Returns the rule and how many outstanding charges it just filed.
+
+    The retroactive half is the point. Silencing a subscription while three of
+    its charges are already sitting in the channel asking for receipts would
+    leave exactly the noise the rule exists to remove — so their notifications
+    are withdrawn too.
+
+    Charges that already have a receipt are left alone: "I don't need a receipt
+    for this" is not a reason to discard one that arrived.
+    """
+    from app.services import jobs
+
+    rule = db.scalar(select(MerchantRule).where(MerchantRule.pattern == pattern))
+    if rule is None:
+        rule = MerchantRule(pattern=pattern, is_regex=is_regex, skip_receipt=True)
+        db.add(rule)
+    rule.enabled = True
+    rule.skip_receipt = True
+    if category:
+        rule.category = category
+    if note:
+        rule.note = note
+    db.flush()
+
+    stale_statuses = [
+        TransactionStatus.new.value,
+        TransactionStatus.notified.value,
+        TransactionStatus.lapsed.value,
+        TransactionStatus.needs_attention.value,
+    ]
+    affected = 0
+    for tx in db.scalars(select(Transaction).where(Transaction.status.in_(stale_statuses))):
+        if tx.attachments or not rule.matches(tx.merchant):
+            continue
+
+        tx.status = TransactionStatus.no_receipt_required
+        if rule.category and not tx.category:
+            tx.category = rule.category
+        if rule.note:
+            tx.notes = f"{tx.notes}\n{rule.note}" if tx.notes else rule.note
+        db.add(tx)
+
+        # Withdraw the ask: cancel anything queued, and take down the message
+        # already sitting in the channel.
+        jobs.discard_for_transaction(db, tx.id)
+        if tx.notify_message_id:
+            jobs.enqueue(
+                db,
+                kind="discord.delete_message",
+                payload={"message_id": tx.notify_message_id},
+                idempotency_key=f"delmsg:{tx.notify_message_id}",
+            )
+            tx.notify_message_id = None
+            db.add(tx)
+        affected += 1
+
+    logger.info("Silenced %r — %d outstanding charge(s) filed", pattern, affected)
+    return rule, affected
+
+
 def link_refund(db: Session, tx: Transaction) -> Transaction | None:
     """Point a credit at the charge it most likely reverses.
 

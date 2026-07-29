@@ -186,7 +186,7 @@ def test_slash_commands_are_registered():
     from app.discordbot.bot import ReceiptBot
 
     names = sorted(c.name for c in ReceiptBot().tree.get_commands())
-    assert names == ["cat", "note", "pending", "search", "skip", "whoami"]
+    assert names == ["cat", "note", "pending", "search", "silence", "skip", "whoami"]
 
 
 def test_slash_skip_marks_no_receipt_required(env):
@@ -562,3 +562,132 @@ def test_only_one_place_confirms_a_stored_receipt():
     assert hits == {"discordbot/tasks.py"}, (
         f"'receipt stored' should only be sent from the finalize job; found in: {sorted(hits)}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Silencing a merchant
+# --------------------------------------------------------------------------- #
+
+def test_silencing_files_charges_that_are_already_outstanding(tmp_path, monkeypatch):
+    """The retroactive half is the point.
+
+    Silencing a subscription while its charges are already sitting in the channel
+    asking for receipts would leave exactly the noise the rule exists to remove.
+    """
+    from sqlalchemy import func, select
+
+    from app.db import session_scope
+    from app.models import Job, MerchantRule, Transaction, TransactionStatus
+
+    monkeypatch.setenv("RM_DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+    import app.security
+
+    app.config.get_config.cache_clear()
+    app.db._engine = None
+    app.db._SessionFactory = None
+    app.security._fernet = None
+    from app.db import init_db
+
+    init_db()
+
+    with session_scope() as db:
+        _rule(db)
+    for i in range(3):
+        with session_scope() as db:
+            tx = _simulate(db, "$21.00 at GITHUB.", subject=f"c{i}")
+            tx.notify_message_id = f"9000{i}"      # already announced
+            tx.status = TransactionStatus.notified
+            db.add(tx)
+    with session_scope() as db:
+        _simulate(db, "$43.21 at AMAZON.", subject="other")
+
+    from app.services.ingest import silence_merchant
+
+    with session_scope() as db:
+        rule, affected = silence_merchant(db, "GITHUB")
+        assert affected == 3
+
+    with session_scope() as db:
+        by_merchant = {t.merchant: t.status for t in db.scalars(select(Transaction))}
+        assert by_merchant["GITHUB"] == TransactionStatus.no_receipt_required
+        assert by_merchant["AMAZON"] == TransactionStatus.new, "an unrelated charge was silenced"
+
+        # The requests already in the channel are withdrawn, not just muted.
+        assert db.scalar(
+            select(func.count(Job.id)).where(Job.kind == "discord.delete_message")
+        ) == 3
+        assert db.scalar(select(func.count(MerchantRule.id))) == 1
+
+
+def test_silencing_leaves_charges_that_already_have_a_receipt(tmp_path, monkeypatch):
+    """Not needing a receipt in future is no reason to discard one that arrived."""
+    from sqlalchemy import select
+
+    from app.db import session_scope
+    from app.models import Attachment, Transaction, TransactionStatus
+    from app.services import storage
+
+    monkeypatch.setenv("RM_DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+    import app.security
+
+    app.config.get_config.cache_clear()
+    app.db._engine = None
+    app.db._SessionFactory = None
+    app.security._fernet = None
+    from app.db import init_db
+
+    init_db()
+
+    with session_scope() as db:
+        _rule(db)
+    with session_scope() as db:
+        tx = _simulate(db, "$21.00 at GITHUB.")
+        stored = storage.store_receipt_bytes(_png_bytes(), original_filename="r.png")
+        db.add(Attachment(transaction_id=tx.id, path=stored.rel_path, mime=stored.mime,
+                          bytes=stored.bytes, sha256=stored.sha256))
+        tx.status = TransactionStatus.receipt_attached
+        db.add(tx)
+
+    from app.services.ingest import silence_merchant
+
+    with session_scope() as db:
+        _rule_obj, affected = silence_merchant(db, "GITHUB")
+        assert affected == 0
+
+    with session_scope() as db:
+        tx = db.scalar(select(Transaction))
+        assert tx.status == TransactionStatus.receipt_attached
+        assert tx.attachments, "the stored receipt was discarded"
+
+
+def test_silencing_also_applies_to_future_charges(tmp_path, monkeypatch):
+    from app.db import session_scope
+    from app.models import TransactionStatus
+
+    monkeypatch.setenv("RM_DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+    import app.security
+
+    app.config.get_config.cache_clear()
+    app.db._engine = None
+    app.db._SessionFactory = None
+    app.security._fernet = None
+    from app.db import init_db
+
+    init_db()
+
+    with session_scope() as db:
+        _rule(db)
+    from app.services.ingest import silence_merchant
+
+    with session_scope() as db:
+        silence_merchant(db, "GITHUB")
+
+    with session_scope() as db:
+        tx = _simulate(db, "$21.00 at GITHUB.")
+        assert tx.status == TransactionStatus.no_receipt_required

@@ -15,12 +15,13 @@ from app.formatting import money
 from app.models import (
     Attachment,
     AuditLog,
+    DiscordMessage,
     RawEmail,
     Transaction,
     TransactionStatus,
     utcnow,
 )
-from app.services import storage
+from app.services import jobs, storage
 from app.web.deps import (
     base_context,
     get_db,
@@ -345,6 +346,128 @@ async def detach(
                     entity_id=str(attachment_id)))
     target = f"/transactions/{tx.short_code}" if tx else "/orphans"
     return redirect_with(target, success="Receipt moved to the orphan queue.")
+
+
+@router.post("/transactions/{code}/delete")
+async def delete_transaction(
+    code: str,
+    csrf_token: str = Form(""),
+    delete_receipts: bool = Form(False),
+    auth=Depends(require_user),
+    db: OrmSession = Depends(get_db),
+):
+    """Remove a charge entirely — for test rows and genuine mistakes.
+
+    Receipt files are **kept by default** and moved to the orphan queue, because
+    the image is the artifact of value and a mis-click here should not destroy
+    one. Tick ``delete_receipts`` to remove the files too.
+
+    The originating email is deleted with it. Ingest deduplicates on
+    ``internet_message_id``, so leaving the row behind would make that message
+    permanently un-reprocessable — which is exactly what you want to undo after
+    deleting a test.
+    """
+    user, session = auth
+    verify_csrf(session, csrf_token)
+
+    tx = db.scalar(select(Transaction).where(Transaction.short_code == code))
+    if tx is None:
+        raise HTTPException(status_code=404, detail="No such transaction")
+
+    attachments = list(
+        db.scalars(select(Attachment).where(Attachment.transaction_id == tx.id))
+    )
+    files_removed = 0
+    for att in attachments:
+        if delete_receipts:
+            storage.delete_stored_file(att.path, att.thumb_path)
+            db.delete(att)
+            files_removed += 1
+        else:
+            att.transaction_id = None   # back to the orphan queue, file intact
+            db.add(att)
+
+    # Clean up rows that reference this charge. discord_messages has no ON DELETE
+    # rule, so leaving them would raise a foreign-key error on delete.
+    message_ids: list[str] = []
+    for record in db.scalars(
+        select(DiscordMessage).where(DiscordMessage.transaction_id == tx.id)
+    ):
+        if record.deleted_at is None and record.kind in ("notify", "confirm"):
+            message_ids.append(record.message_id)
+        db.delete(record)
+
+    # Another charge may point here as its refund target.
+    for other in db.scalars(select(Transaction).where(Transaction.refund_of_id == tx.id)):
+        other.refund_of_id = None
+        db.add(other)
+
+    email_id = tx.email_id
+    short_code, merchant, amount = tx.short_code, tx.merchant, tx.amount_minor
+    db.delete(tx)
+    db.flush()
+
+    if email_id is not None:
+        email = db.get(RawEmail, email_id)
+        # Only if nothing else derives from it.
+        if email is not None and not email.transactions:
+            db.delete(email)
+
+    # Tidy the channel too, so a deleted test does not leave a dangling prompt.
+    for message_id in message_ids:
+        jobs.enqueue(
+            db,
+            kind="discord.delete_message",
+            payload={"message_id": message_id},
+            idempotency_key=f"delmsg:{message_id}",
+        )
+
+    db.add(
+        AuditLog(
+            actor=user.username, action="transaction.deleted", entity="transaction",
+            entity_id=short_code,
+            detail=(
+                f"{merchant} {amount / 100:.2f}; "
+                f"{files_removed} file(s) deleted, "
+                f"{len(attachments) - files_removed} kept as orphans"
+            ),
+        )
+    )
+    note = (
+        f"Deleted #{short_code}."
+        if not attachments
+        else f"Deleted #{short_code} and {files_removed} receipt file(s)."
+        if delete_receipts
+        else f"Deleted #{short_code}; {len(attachments)} receipt(s) moved to the orphan queue."
+    )
+    return redirect_with("/transactions", success=note)
+
+
+@router.post("/attachments/{attachment_id}/delete")
+async def delete_attachment(
+    attachment_id: int,
+    csrf_token: str = Form(""),
+    auth=Depends(require_user),
+    db: OrmSession = Depends(get_db),
+):
+    """Permanently remove a receipt file. Only reachable from the orphan queue."""
+    user, session = auth
+    verify_csrf(session, csrf_token)
+
+    att = db.get(Attachment, attachment_id)
+    if att is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    if att.transaction_id is not None:
+        return redirect_with(
+            "/orphans",
+            error="Detach it from its charge first — this only removes unassigned receipts.",
+        )
+
+    storage.delete_stored_file(att.path, att.thumb_path)
+    db.delete(att)
+    db.add(AuditLog(actor=user.username, action="receipt.deleted", entity="attachment",
+                    entity_id=str(attachment_id), detail=att.original_filename or att.path))
+    return redirect_with("/orphans", success="Receipt deleted.")
 
 
 @router.get("/orphans")

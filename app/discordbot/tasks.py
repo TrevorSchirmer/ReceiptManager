@@ -319,6 +319,26 @@ async def digest(_payload: dict[str, Any]) -> None:
         await channel.send(chunk)
 
 
+@jobs.handler("discord.delete_message")
+async def delete_message(payload: dict[str, Any]) -> None:
+    """Remove one message, e.g. after its charge was deleted from the UI.
+
+    Purely cosmetic, so a missing permission is logged rather than retried
+    forever — the database is already in the state the user asked for.
+    """
+    message_id = str(payload.get("message_id") or "")
+    if not message_id:
+        return
+    channel = await _channel()
+    try:
+        message = await channel.fetch_message(int(message_id))
+        await message.delete()
+    except discord.NotFound:
+        pass  # already gone; the goal is met
+    except discord.Forbidden:
+        logger.error("Cannot delete message %s — the bot lacks Manage Messages", message_id)
+
+
 @jobs.handler("discord.alert")
 async def alert(payload: dict[str, Any]) -> None:
     """Operational alert (heartbeat, connection loss). Loud on purpose."""

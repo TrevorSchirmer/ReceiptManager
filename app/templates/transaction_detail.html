@@ -160,6 +160,28 @@
         {% endif %}
       </dl>
     </section>
+
+    <section class="card card-pad mt-3">
+      <h2 class="mb-3">Delete</h2>
+      <p class="hint mb-3">
+        Removes this charge and its originating email, so the same email can be
+        re-processed later. Receipt files are kept and moved to the orphan queue
+        unless you tick the box.
+      </p>
+      <form method="post" action="/transactions/{{ tx.short_code }}/delete"
+            onsubmit="return confirm('Delete #{{ tx.short_code }}? This cannot be undone.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if tx.attachments %}
+          <div class="check-row mb-3">
+            <input type="checkbox" id="delete_receipts" name="delete_receipts" value="1">
+            <label for="delete_receipts">
+              Also delete {{ tx.attachments | length }} receipt file{% if tx.attachments | length != 1 %}s{% endif %}
+            </label>
+          </div>
+        {% endif %}
+        <button class="btn btn-danger" type="submit">Delete transaction</button>
+      </form>
+    </section>
   </aside>
 </div>
 {% endblock %}

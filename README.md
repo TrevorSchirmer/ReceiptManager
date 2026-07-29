@@ -62,7 +62,7 @@ New-ApplicationAccessPolicy -AppId <client-id> -PolicyScopeGroupId <mailbox> -Ac
   receipts into your tax records.
 
 **Parse rules** — a regex with named groups `merchant`, `amount`, `currency`,
-`card_last4`, `cardholder`, `occurred_at`. Only `amount` is required. Rules run
+`card_ending`, `cardholder`, `occurred_at`. Only `amount` is required. Rules run
 against the *normalized plain text*, never the raw HTML. Use the live tester on
 the Parse rules page with a real alert email; you will not get it right first try,
 which is what **Re-parse stalled emails** is for.
@@ -155,9 +155,10 @@ the database precisely so a stolen backup does not also hand over those two
 credentials. Set `RM_BACKUP_INCLUDE_KEY=1` if you would rather have one-step
 restores and accept that trade-off.
 
-**If you lose it:** annoying, not fatal. The app logs a clear error, you delete
-the file, restart, and re-enter the client secret and bot token in Settings. No
-transactions or receipts are affected.
+**If you lose it:** annoying, not fatal, and no restart needed. The app keeps
+running, logs the failure, and Health shows a banner naming the credentials it
+cannot read. Re-enter them in Settings and they are re-encrypted under the new
+key. No transactions or receipts are affected.
 
 **Restoring to a new container:** bring the key across too, or expect to re-enter
 those two credentials.

@@ -140,7 +140,9 @@ def _resolve_upload(referenced_message_id: str | None, text: str | None) -> dict
         return payload
 
 
-def _link_attachments(attachment_ids: list[int], short_code: str) -> dict[str, Any] | None:
+def _link_attachments(
+    attachment_ids: list[int], short_code: str, note: str = ""
+) -> dict[str, Any] | None:
     """Attach captured files to a charge. Idempotent; skips already-linked rows."""
     with session_scope() as db:
         tx = db.scalar(select(Transaction).where(Transaction.short_code == short_code))
@@ -172,7 +174,11 @@ def _link_attachments(attachment_ids: list[int], short_code: str) -> dict[str, A
             jobs.enqueue(
                 db,
                 kind="discord.finalize",
-                payload={"transaction_id": tx.id, "attachment_ids": attachment_ids},
+                payload={
+                    "transaction_id": tx.id,
+                    "attachment_ids": attachment_ids,
+                    "note": note,
+                },
                 idempotency_key=f"finalize:{tx.id}:{min(attachment_ids)}",
             )
         return {"summary": render_summary(tx), "transaction_id": tx.id, "linked": linked}
@@ -264,9 +270,15 @@ class ReceiptPicker(discord.ui.View):
                 content=f"⚠️ Could not find charge `#{choice}`.", view=None
             )
             return
-        await interaction.response.edit_message(
-            content=f"✅ {result['summary']} — receipt stored", view=None
-        )
+
+        # No confirmation here — the finalize job posts the single one, once the
+        # bytes are verified on disk. Remove the picker instead of editing it, so
+        # the channel is left with exactly one message about this receipt.
+        await interaction.response.defer()
+        try:
+            await interaction.delete_original_response()
+        except discord.HTTPException:
+            await interaction.edit_original_response(content="📎 Attached.", view=None)
 
     async def on_timeout(self) -> None:
         if self.message is None:
@@ -423,14 +435,21 @@ class ReceiptBot(discord.Client):
         method = MatchMethod(outcome["method"])
 
         if method in (MatchMethod.reply, MatchMethod.code, MatchMethod.sole_open):
-            result = await run_db(_link_attachments, attachment_ids, outcome["short_code"])
+            note = (
+                "_(only one charge was awaiting a receipt — reply with_ `#code` _to correct)_"
+                if method is MatchMethod.sole_open
+                else ""
+            )
+            result = await run_db(
+                _link_attachments, attachment_ids, outcome["short_code"], note
+            )
             if result is None:
                 await _safe_reply(message, "⚠️ That charge no longer exists.")
                 return
-            note = ""
-            if method is MatchMethod.sole_open:
-                note = "\n_(only one charge was awaiting a receipt — reply with_ `#code` _to correct)_"
-            await _safe_reply(message, f"✅ {result['summary']} — receipt stored{note}")
+            # Deliberately silent on success. The finalize job posts the single
+            # confirmation once the bytes are verified on disk — saying "stored"
+            # here as well produced two identical messages, and this one would
+            # have said it before durability was established.
             return
 
         picker = ReceiptPicker(

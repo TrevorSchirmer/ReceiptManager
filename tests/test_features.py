@@ -536,3 +536,29 @@ def test_outstanding_work_is_still_deduplicated(tmp_path, monkeypatch):
 
     with session_scope() as db:
         assert db.scalar(select(func.count(Job.id))) == 1
+
+
+def test_only_one_place_confirms_a_stored_receipt():
+    """A structural guard against the duplicate-confirmation bug returning.
+
+    "receipt stored" was being sent from three places — the inline reply in the
+    message handler, the picker's edit, and the finalize job — so a matched
+    upload produced two identical messages in the channel.
+
+    Only finalize is entitled to say it: that is the point at which the bytes
+    have been verified on disk. Anything earlier is claiming durability it has
+    not established.
+    """
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parent.parent / "app"
+    # Match on the file, not a line number, so ordinary edits do not break this.
+    hits = {
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        for line in path.read_text().splitlines()
+        if "receipt stored" in line and not line.lstrip().startswith("#")
+    }
+    assert hits == {"discordbot/tasks.py"}, (
+        f"'receipt stored' should only be sent from the finalize job; found in: {sorted(hits)}"
+    )

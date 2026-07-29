@@ -193,7 +193,13 @@ async def finalize(payload: dict[str, Any]) -> None:
     channel = await _channel()
 
     if data["keep_confirmation"]:
-        confirmation = await channel.send(f"✅ {data['summary']} — receipt stored")
+        # The only "receipt stored" in the system. It is posted here, and
+        # nowhere else, because this is the point at which the bytes have
+        # been verified on disk and the message is about to be deleted.
+        text = f"✅ {data['summary']} — receipt stored"
+        if note := str(payload.get("note") or ""):
+            text += f"\n{note}"
+        confirmation = await channel.send(text)
         await run_db(
             _record_confirmation, tx_id, str(confirmation.id), str(confirmation.channel.id)
         )

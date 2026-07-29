@@ -1,0 +1,57 @@
+[project]
+name = "receiptmanager"
+version = "0.1.0"
+description = "Capture credit-card charge alerts from Outlook, chase receipts in Discord, archive them."
+requires-python = ">=3.12"
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.12",
+
+    "discord.py>=2.4",
+
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14",
+
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+
+    "httpx>=0.27",
+    "msal>=1.31",
+
+    "argon2-cffi>=23.1",
+    "cryptography>=43.0",
+    "pyotp>=2.9",
+    "qrcode>=8.0",
+
+    "beautifulsoup4>=4.12",
+    "lxml>=5.3",
+    "python-dateutil>=2.9",
+
+    # Binary wheels — no system packages needed in the LXC.
+    "pillow>=11.0",
+    "pillow-heif>=0.20",
+    "pypdfium2>=4.30",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.7"]
+
+[project.scripts]
+receiptmanager = "app.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+devdata/
+data/
+*.sqlite
+*.db
+secret.key
+.pytest_cache/
+.ruff_cache/
+app/static/htmx.min.js

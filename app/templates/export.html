@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Export{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Export</h1>
+    <p class="muted">
+      The accountant hand-off. The ZIP contains <code class="mono">transactions.csv</code>,
+      every receipt file named to key back to its CSV row, and a
+      <code class="mono">MANIFEST.txt</code> that names any receipt whose file is missing
+      on disk — an honest partial export beats a silent one.
+    </p>
+  </div>
+</header>
+
+<section class="card fieldset" style="max-width:620px">
+  <h2>Date range</h2>
+  <form method="post" action="/export/zip" id="export-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-grid mb-3">
+      <div class="field">
+        <label for="start">From</label>
+        <input id="start" name="start" type="date" value="{{ default_start }}">
+      </div>
+      <div class="field">
+        <label for="end">To</label>
+        <input id="end" name="end" type="date" value="{{ default_end }}">
+      </div>
+    </div>
+    <p class="hint mb-3">
+      Dates are interpreted in the business timezone ({{ tz }}) and are inclusive.
+      Leave both blank to export everything.
+    </p>
+    <div class="row gap-2 wrap">
+      <button class="btn btn-primary" type="submit">Download ZIP (CSV + receipts)</button>
+      <button class="btn" type="submit" formaction="/export/csv">Download CSV only</button>
+    </div>
+  </form>
+</section>
+
+<section class="card card-pad mt-3" style="max-width:620px">
+  <h2 class="mb-3">What's in the ZIP</h2>
+  <dl class="kv">
+    <dt class="mono">transactions.csv</dt>
+    <dd>One row per charge, with a <code class="mono">receipt_files</code> column listing its files.</dd>
+    <dt class="mono">receipts/</dt>
+    <dd>Files named <code class="mono">2026-07-28_1042_amazon-marketplace_1.jpg</code>.</dd>
+    <dt class="mono">MANIFEST.txt</dt>
+    <dd>Counts, the range exported, and an explicit list of anything missing.</dd>
+  </dl>
+</section>
+{% endblock %}

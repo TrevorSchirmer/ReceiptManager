@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Two-factor code{% endblock %}
+
+{% block content %}
+<section class="auth-card card" aria-labelledby="totp-title">
+  <div class="auth-heading">
+    <span class="auth-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <rect x="4" y="10" width="16" height="10" rx="2"/>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+      </svg>
+    </span>
+    <div>
+      <h1 id="totp-title">Two-factor code</h1>
+      <p>Enter the 6-digit code from your authenticator app.</p>
+    </div>
+  </div>
+
+  {% if error %}
+    <div class="inline-message inline-message-error" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="auth-form" method="post" action="/login/totp">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="code">Authentication code</label>
+      <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code"
+             pattern="[0-9 -]*" maxlength="9" autofocus required class="mono"
+             {% if error %}aria-invalid="true"{% endif %}>
+      <span class="hint">Codes rotate every 30 seconds.</span>
+    </div>
+    <button class="btn btn-primary btn-block" type="submit">Verify</button>
+  </form>
+
+  <form method="post" action="/logout" class="mt-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn btn-ghost btn-block" type="submit">Cancel and sign out</button>
+  </form>
+</section>
+{% endblock %}

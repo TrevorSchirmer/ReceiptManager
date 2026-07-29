@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}Parse rules{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Parse rules</h1>
+    <p class="muted">
+      Rules run in priority order against the <strong>normalized plain text</strong> of
+      each email — never the raw HTML. Use named capture groups:
+      <code class="mono">merchant, amount, currency, card_last4, cardholder, occurred_at</code>.
+      Only <code class="mono">amount</code> is required.
+    </p>
+  </div>
+  <form method="post" action="/rules/reparse" class="right">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn" type="submit">Re-parse stalled emails</button>
+  </form>
+</header>
+
+<section class="card mb-3">
+  {% if rules %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Priority</th>
+            <th scope="col">Name</th>
+            <th scope="col">Sender</th>
+            <th scope="col">Subject</th>
+            <th scope="col">Enabled</th>
+            <th scope="col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rule in rules %}
+            <tr>
+              <td class="num">{{ rule.priority }}</td>
+              <td>{{ rule.name }}</td>
+              <td class="truncate mono">{{ rule.sender_match or '(any)' }}</td>
+              <td class="truncate mono">{{ rule.subject_match or '(any)' }}</td>
+              <td>
+                {% if rule.enabled %}<span class="badge badge-verified">on</span>
+                {% else %}<span class="badge">off</span>{% endif %}
+              </td>
+              <td class="right">
+                <form method="post" action="/rules/{{ rule.id }}/delete"
+                      onsubmit="return confirm('Delete this rule?')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="btn btn-sm btn-ghost" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <h3>No rules yet</h3>
+      <p>Without a rule, charges are still captured — they just land as <em>needs attention</em>
+         with the raw body kept, so nothing is lost while you tune the regex.</p>
+    </div>
+  {% endif %}
+</section>
+
+<section class="card fieldset mb-3">
+  <h2>Merchant auto-rules</h2>
+  <p class="muted" style="margin-top:-8px">
+    Charges from a matching merchant are filed automatically and never announced.
+    This is for recurring SaaS: without it the bot nags every month for a receipt
+    that will never arrive, and that noise trains you to ignore the channel —
+    which is how real receipts start getting missed.
+  </p>
+
+  {% if merchant_rules %}
+    <div class="table-wrap mb-3">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Merchant pattern</th>
+            <th scope="col">Skip receipt</th>
+            <th scope="col">Category</th>
+            <th scope="col">Enabled</th>
+            <th scope="col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rule in merchant_rules %}
+            <tr>
+              <td class="mono truncate">{{ rule.pattern }}{% if rule.is_regex %} <span class="badge">regex</span>{% endif %}</td>
+              <td>{% if rule.skip_receipt %}<span class="badge badge-no_receipt_required">yes</span>{% else %}—{% endif %}</td>
+              <td>{{ rule.category or '—' }}</td>
+              <td>{% if rule.enabled %}<span class="badge badge-verified">on</span>{% else %}<span class="badge">off</span>{% endif %}</td>
+              <td class="right">
+                <form method="post" action="/merchant-rules/{{ rule.id }}/delete"
+                      onsubmit="return confirm('Delete this merchant rule?')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="btn btn-sm btn-ghost" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <form method="post" action="/merchant-rules">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-grid mb-3">
+      <div class="field">
+        <label for="pattern">Merchant contains</label>
+        <input id="pattern" name="pattern" type="text" placeholder="GITHUB" required>
+      </div>
+      <div class="field">
+        <label for="mr-category">Category</label>
+        <input id="mr-category" name="category" type="text" placeholder="Software">
+      </div>
+      <div class="field">
+        <label for="mr-note">Note to attach</label>
+        <input id="mr-note" name="note" type="text" placeholder="Recurring subscription">
+      </div>
+    </div>
+    <div class="row gap-3 wrap mb-3">
+      <div class="check-row">
+        <input type="checkbox" id="mr-enabled" name="enabled" checked>
+        <label for="mr-enabled">Enabled</label>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="mr-skip" name="skip_receipt" checked>
+        <label for="mr-skip">No receipt required</label>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="mr-regex" name="is_regex">
+        <label for="mr-regex">Pattern is a regex</label>
+      </div>
+    </div>
+    <button class="btn btn-primary" type="submit">Add merchant rule</button>
+  </form>
+</section>
+
+<div class="detail-grid">
+  <section class="card fieldset">
+    <h2>Add or edit a rule</h2>
+    <form method="post" action="/rules" id="rule-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="id" value="">
+
+      <div class="form-grid mb-3">
+        <div class="field">
+          <label for="name">Rule name</label>
+          <input id="name" name="name" type="text" placeholder="Amex alerts" required>
+        </div>
+        <div class="field">
+          <label for="priority">Priority</label>
+          <input id="priority" name="priority" type="number" value="100">
+          <span class="hint">Lower runs first.</span>
+        </div>
+        <div class="field">
+          <label for="sender_match">Sender contains</label>
+          <input id="sender_match" name="sender_match" type="text" placeholder="alerts@amex.com">
+        </div>
+        <div class="field">
+          <label for="subject_match">Subject contains</label>
+          <input id="subject_match" name="subject_match" type="text" placeholder="Transaction alert">
+        </div>
+        <div class="field">
+          <label for="default_currency">Default currency</label>
+          <input id="default_currency" name="default_currency" type="text" value="USD" maxlength="3">
+        </div>
+        <div class="field">
+          <label for="date_format">Date format</label>
+          <input id="date_format" name="date_format" type="text" placeholder="%m/%d/%Y %I:%M %p">
+          <span class="hint">Leave blank for automatic parsing.</span>
+        </div>
+      </div>
+
+      <div class="field mb-3">
+        <label for="body_regex">Body regex</label>
+        <textarea id="body_regex" name="body_regex" rows="4" class="mono" required
+          placeholder="charge of (?P&lt;amount&gt;[$\d,.]+)\s+was made at (?P&lt;merchant&gt;.+?)\s+on your card ending (?P&lt;card_last4&gt;\d{4})"></textarea>
+        <span class="hint">
+          Case-insensitive, multiline, dot-matches-newline. This placeholder matches the
+          sample body in Settings → Simulate email, so you can paste both to try it out.
+        </span>
+      </div>
+
+      <div class="row gap-3 wrap mb-3">
+        <div class="check-row">
+          <input type="checkbox" id="enabled" name="enabled" checked>
+          <label for="enabled">Enabled</label>
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="match_is_regex" name="match_is_regex">
+          <label for="match_is_regex">Sender/subject are regexes</label>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" type="submit">Save rule</button>
+    </form>
+  </section>
+
+  <section class="card fieldset">
+    <h2>Test it</h2>
+    <p class="muted" style="margin-top:-8px">
+      Paste a real alert email and see exactly what the regex captures before you save.
+    </p>
+    <form id="test-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field mb-3">
+        <label for="sample_sender">Sample sender</label>
+        <input id="sample_sender" name="sample_sender" type="text"
+               value="{{ sample.sender if sample else '' }}">
+      </div>
+      <div class="field mb-3">
+        <label for="sample_subject">Sample subject</label>
+        <input id="sample_subject" name="sample_subject" type="text"
+               value="{{ sample.subject if sample else '' }}">
+      </div>
+      <div class="field mb-3">
+        <label for="sample_body">Sample body</label>
+        <textarea id="sample_body" name="sample_body" rows="8" class="mono">{{ (sample.body_html or sample.body_text) if sample else '' }}</textarea>
+      </div>
+      <div class="check-row mb-3">
+        <input type="checkbox" id="sample_is_html" name="sample_is_html" {% if sample and sample.body_html %}checked{% endif %}>
+        <label for="sample_is_html">Body is HTML</label>
+      </div>
+      <button class="btn" type="submit">Run test</button>
+    </form>
+    <div id="test-result" class="mt-3"></div>
+  </section>
+</div>
+
+<script>
+// Progressive enhancement: the rule form works without this; only the tester needs JS.
+document.getElementById('test-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const out = document.getElementById('test-result');
+  const body = new FormData(event.target);
+  for (const name of ['name', 'sender_match', 'subject_match', 'body_regex',
+                      'default_currency', 'date_format']) {
+    body.append(name, document.getElementById(name).value);
+  }
+  if (document.getElementById('match_is_regex').checked) body.append('match_is_regex', 'on');
+
+  out.innerHTML = '<p class="muted">Testing…</p>';
+  const response = await fetch('/rules/test', { method: 'POST', body });
+  const data = await response.json();
+
+  const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+
+  let html = '';
+  if (data.error) html += `<p class="field-error">${esc(data.error)}</p>`;
+  html += `<dl class="kv">
+    <dt>Envelope</dt><dd>${data.envelope_matched ? '✅ matched' : '❌ did not match'}</dd>
+    <dt>Body regex</dt><dd>${data.matched ? '✅ matched' : '❌ did not match'}</dd>
+  </dl>`;
+
+  if (data.fields) {
+    html += '<h3 class="mt-3">Parsed</h3><dl class="kv">';
+    for (const [k, v] of Object.entries(data.fields)) {
+      html += `<dt>${esc(k)}</dt><dd class="mono">${esc(v)}</dd>`;
+    }
+    html += '</dl>';
+  }
+
+  // Show the normalized text the regex actually ran against, with the match highlighted.
+  const text = data.normalized_text || '';
+  let shown = esc(text);
+  if (data.span) {
+    const [a, b] = data.span;
+    shown = esc(text.slice(0, a)) + '<mark>' + esc(text.slice(a, b)) + '</mark>' + esc(text.slice(b));
+  }
+  html += `<h3 class="mt-3">Normalized text</h3><pre class="raw-body">${shown}</pre>`;
+  out.innerHTML = html;
+});
+</script>
+{% endblock %}

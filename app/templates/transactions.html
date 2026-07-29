@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Transactions{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Transactions</h1>
+    <p class="muted">Search charges, review statuses, and open receipts.</p>
+  </div>
+</header>
+
+<form class="filters card card-pad mb-3" method="get" action="/transactions">
+  <div class="field">
+    <label for="transaction-q">Search</label>
+    <input id="transaction-q" name="q" type="text" value="{{ q }}"
+           placeholder="Merchant, #code, amount, note…">
+  </div>
+
+  <div class="field">
+    <label for="transaction-status">Status</label>
+    <select id="transaction-status" name="status">
+      <option value="">Any status</option>
+      {% for status in statuses %}
+        <option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>
+          {{ status | replace('_', ' ') }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="transaction-start">From</label>
+    <input id="transaction-start" name="start" type="date" value="{{ start }}">
+  </div>
+
+  <div class="field">
+    <label for="transaction-end">To</label>
+    <input id="transaction-end" name="end" type="date" value="{{ end }}">
+  </div>
+
+  <div class="row gap-1 wrap">
+    <button class="btn btn-primary" type="submit">Apply</button>
+    <a class="btn btn-ghost" href="/transactions">Clear</a>
+  </div>
+</form>
+
+{% if rows %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Code</th>
+          <th scope="col">Date</th>
+          <th scope="col">Merchant</th>
+          <th scope="col" class="right">Amount</th>
+          <th scope="col">Card</th>
+          <th scope="col">Status</th>
+          <th scope="col">Receipts</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tx in rows %}
+          <tr>
+            <td><a class="mono nowrap" href="/transactions/{{ tx.short_code }}">#{{ tx.short_code }}</a></td>
+            <td class="nowrap">{{ tx.occurred_at | when(tz) }}</td>
+            <td class="truncate">{{ tx.merchant }}</td>
+            <td class="num nowrap">{{ tx.amount_minor | money(tx.currency) }}</td>
+            <td class="nowrap">{% if tx.card_last4 %}•••• {{ tx.card_last4 }}{% else %}—{% endif %}</td>
+            <td><span class="badge badge-{{ tx.status.value }}">{{ tx.status.value | replace('_', ' ') }}</span></td>
+            <td class="num">{% if tx.attachments %}{{ tx.attachments | length }}{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <nav class="pager" aria-label="Transaction pages">
+    {% set qs = 'q=' ~ (q | urlencode) ~ '&status=' ~ (status_filter | urlencode) ~ '&start=' ~ (start | urlencode) ~ '&end=' ~ (end | urlencode) %}
+    {% if page > 1 %}
+      <a class="btn btn-ghost btn-sm" href="/transactions?{{ qs }}&amp;page={{ page - 1 }}">Previous</a>
+    {% endif %}
+    <span class="muted">Page {{ page }} of {{ pages }} · {{ total }} transactions</span>
+    {% if page < pages %}
+      <a class="btn btn-ghost btn-sm" href="/transactions?{{ qs }}&amp;page={{ page + 1 }}">Next</a>
+    {% endif %}
+  </nav>
+{% else %}
+  <div class="empty-state">
+    <h3>No matches</h3>
+    <p>No transactions match these filters. Clear them or widen the date range.</p>
+    <a class="btn btn-ghost" href="/transactions">Clear filters</a>
+  </div>
+{% endif %}
+{% endblock %}

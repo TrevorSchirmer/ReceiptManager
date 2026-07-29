@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <p class="muted">Receipt activity and connection health at a glance.</p>
+  </div>
+</header>
+
+<section class="stat-row" aria-label="Transaction summary">
+  <div class="stat-tile">
+    <div class="stat-label">Month to date</div>
+    <div class="stat-value">{{ mtd_display }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Awaiting receipt</div>
+    <div class="stat-value">{{ outstanding }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Lapsed</div>
+    <div class="stat-value">{{ lapsed }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Unassigned</div>
+    <div class="stat-value">{{ orphans }}</div>
+  </div>
+</section>
+
+<div class="row gap-3 wrap mt-3">
+  <section class="col card card-pad" style="flex:2 1 420px">
+    <div class="page-head">
+      <div>
+        <h2>Awaiting receipts</h2>
+        <p class="muted">Oldest charges first — these are the ones being chased.</p>
+      </div>
+      <a class="btn btn-ghost btn-sm right" href="/transactions?status=notified">View all</a>
+    </div>
+
+    {% if awaiting %}
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">Charge</th>
+              <th scope="col">Merchant</th>
+              <th scope="col" class="right">Amount</th>
+              <th scope="col">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tx in awaiting %}
+              <tr>
+                <td><a class="mono nowrap" href="/transactions/{{ tx.short_code }}">#{{ tx.short_code }}</a></td>
+                <td class="truncate">{{ tx.merchant }}</td>
+                <td class="num nowrap">{{ tx.amount_minor | money(tx.currency) }}</td>
+                <td class="nowrap">{{ tx.occurred_at | when(tz) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <h3>Nothing outstanding</h3>
+        <p>Every captured charge has a receipt. New charges appear here as soon as their alert email arrives.</p>
+      </div>
+    {% endif %}
+  </section>
+
+  <aside class="col card card-pad" style="flex:1 1 280px">
+    <div class="page-head">
+      <div>
+        <h2>Connections</h2>
+      </div>
+      {% if health.ok %}
+        <span class="badge badge-verified right">Healthy</span>
+      {% else %}
+        <span class="badge badge-needs_attention right">Needs attention</span>
+      {% endif %}
+    </div>
+
+    <dl class="kv">
+      <dt>Outlook</dt>
+      <dd>
+        {% if not health.graph_configured %}
+          <span class="badge">Not configured</span>
+        {% elif health.poll_error or health.poll_stale %}
+          <span class="badge badge-needs_attention">Problem</span>
+        {% else %}
+          <span class="badge badge-verified">Polling</span>
+        {% endif %}
+      </dd>
+
+      <dt>Discord</dt>
+      <dd>
+        {% if not health.discord_configured %}
+          <span class="badge">Not configured</span>
+        {% elif health.discord_connected %}
+          <span class="badge badge-verified">Connected</span>
+        {% else %}
+          <span class="badge badge-needs_attention">Disconnected</span>
+        {% endif %}
+      </dd>
+
+      <dt>Last poll</dt>
+      <dd>{% if health.last_poll %}{{ health.last_poll | when(tz) }}{% else %}<span class="muted">Never</span>{% endif %}</dd>
+
+      <dt>Last email</dt>
+      <dd>{% if health.last_mail %}{{ health.last_mail | when(tz) }}{% else %}<span class="muted">None yet</span>{% endif %}</dd>
+
+      <dt>Queue</dt>
+      <dd class="mono">{{ health.jobs.pending }} pending{% if health.jobs.dead %} · <span class="field-error">{{ health.jobs.dead }} dead</span>{% endif %}</dd>
+    </dl>
+
+    {% if health.poll_error %}
+      <p class="field-error mt-3">{{ health.poll_error }}</p>
+    {% endif %}
+    <a class="btn btn-ghost btn-sm mt-3" href="/health">Open health page</a>
+  </aside>
+</div>
+
+<section class="card card-pad mt-3">
+  <div class="page-head">
+    <div><h2>Recent activity</h2></div>
+    <a class="btn btn-ghost btn-sm right" href="/transactions">All transactions</a>
+  </div>
+
+  {% if recent %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Code</th>
+            <th scope="col">Date</th>
+            <th scope="col">Merchant</th>
+            <th scope="col" class="right">Amount</th>
+            <th scope="col">Card</th>
+            <th scope="col">Status</th>
+            <th scope="col">Receipts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for tx in recent %}
+            <tr>
+              <td><a class="mono nowrap" href="/transactions/{{ tx.short_code }}">#{{ tx.short_code }}</a></td>
+              <td class="nowrap">{{ tx.occurred_at | when(tz) }}</td>
+              <td class="truncate">{{ tx.merchant }}</td>
+              <td class="num nowrap">{{ tx.amount_minor | money(tx.currency) }}</td>
+              <td class="nowrap">{% if tx.card_last4 %}•••• {{ tx.card_last4 }}{% else %}—{% endif %}</td>
+              <td><span class="badge badge-{{ tx.status.value }}">{{ tx.status.value | replace('_', ' ') }}</span></td>
+              <td class="num">{% if tx.attachments %}{{ tx.attachments | length }}{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <h3>Nothing captured yet</h3>
+      <p>Configure Outlook in Settings, then use <strong>Simulate email</strong> to push a fake charge through the whole pipeline — ingest, parse, Discord, match — without spending money.</p>
+      <a class="btn btn-primary" href="/settings">Open settings</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

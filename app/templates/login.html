@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in{% endblock %}
+
+{% block content %}
+<section class="auth-card card" aria-labelledby="login-title">
+  <div class="auth-heading">
+    <span class="auth-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/>
+        <path d="M9 8h6M9 12h6"/>
+      </svg>
+    </span>
+    <div>
+      <h1 id="login-title">Sign in</h1>
+      <p>Access your ReceiptManager workspace.</p>
+    </div>
+  </div>
+
+  {% if locked_until %}
+    <div class="inline-message inline-message-error" role="alert">
+      Too many attempts. Try again after {{ locked_until }}.
+    </div>
+  {% elif error %}
+    <div class="inline-message inline-message-error" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="auth-form" method="post" action="/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    {% if needs_username %}
+    <div class="field">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username"
+             autofocus required {% if locked_until %}disabled{% endif %}>
+    </div>
+    {% endif %}
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="current-password"
+        {% if not needs_username %}autofocus{% endif %}
+        required
+        {% if error %}aria-invalid="true"{% endif %}
+        {% if locked_until %}disabled{% endif %}
+      >
+    </div>
+
+    <button class="btn btn-primary btn-block" type="submit" {% if locked_until %}disabled{% endif %}>
+      Sign in
+    </button>
+  </form>
+</section>
+{% endblock %}

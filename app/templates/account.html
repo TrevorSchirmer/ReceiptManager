@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}Account{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Account</h1>
+    <p class="muted">Signed in as <strong>{{ user.username }}</strong>.</p>
+  </div>
+</header>
+
+<div class="detail-grid">
+  <main>
+    <section class="card fieldset mb-3">
+      <h2>Two-factor authentication</h2>
+
+      {% if totp_enabled %}
+        <p class="muted" style="margin-top:-8px">
+          <span class="badge badge-verified">Enabled</span>
+          A code from your authenticator is required at every sign-in.
+        </p>
+        <form method="post" action="/account/totp/disable">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="field mb-3" style="max-width:320px">
+            <label for="disable-password">Confirm your password to turn it off</label>
+            <input id="disable-password" name="password" type="password"
+                   autocomplete="current-password" required>
+          </div>
+          <button class="btn btn-danger" type="submit">Turn off two-factor</button>
+        </form>
+
+      {% elif pending_secret %}
+        <p class="muted" style="margin-top:-8px">
+          Scan this with your authenticator app, then enter a code to confirm.
+          Two-factor is not active until a valid code is accepted.
+        </p>
+        <div class="row gap-3 wrap mb-3">
+          <div style="width:200px;background:#fff;padding:10px;border-radius:8px">
+            {{ pending_qr | safe }}
+          </div>
+          <div class="col gap-2">
+            <div class="field">
+              <label for="manual-secret">Or enter this key manually</label>
+              <input id="manual-secret" class="mono" value="{{ pending_secret }}" readonly
+                     onclick="this.select()">
+            </div>
+            <p class="hint">Keep this key private — anyone holding it can generate your codes.</p>
+          </div>
+        </div>
+        <form method="post" action="/account/totp/confirm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="field mb-3" style="max-width:220px">
+            <label for="confirm-code">Code from your app</label>
+            <input id="confirm-code" name="code" class="mono" inputmode="numeric"
+                   maxlength="9" autofocus required>
+          </div>
+          <button class="btn btn-primary" type="submit">Confirm and enable</button>
+        </form>
+
+      {% else %}
+        <p class="muted" style="margin-top:-8px">
+          <span class="badge">Off</span>
+          Worth turning on the moment this instance is reachable from outside your LAN
+          — for example over Tailscale.
+        </p>
+        <form method="post" action="/account/totp/begin">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn" type="submit">Set up two-factor</button>
+        </form>
+      {% endif %}
+    </section>
+
+    <section class="card fieldset mb-3">
+      <h2>Change password</h2>
+      <form method="post" action="/account/password">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-grid mb-3">
+          <div class="field">
+            <label for="current_password">Current password</label>
+            <input id="current_password" name="current_password" type="password"
+                   autocomplete="current-password" required>
+          </div>
+          <div class="field">
+            <label for="new_password">New password</label>
+            <input id="new_password" name="new_password" type="password"
+                   autocomplete="new-password" minlength="12" required>
+            <span class="hint">At least 12 characters.</span>
+          </div>
+          <div class="field">
+            <label for="new_password_confirm">Confirm new password</label>
+            <input id="new_password_confirm" name="new_password_confirm" type="password"
+                   autocomplete="new-password" minlength="12" required>
+          </div>
+        </div>
+        <p class="hint mb-3">All other signed-in sessions will be signed out.</p>
+        <button class="btn btn-primary" type="submit">Change password</button>
+      </form>
+    </section>
+
+    <section class="card fieldset">
+      <h2>Users</h2>
+      <p class="muted" style="margin-top:-8px">
+        There is no password reset — if every account's password is lost, you will need
+        shell access to the container to recover.
+      </p>
+
+      <div class="table-wrap mb-3">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">Username</th>
+              <th scope="col">Two-factor</th>
+              <th scope="col">Last sign-in</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+              <tr>
+                <td>{{ u.username }}{% if u.id == user.id %} <span class="badge">you</span>{% endif %}</td>
+                <td>{% if u.totp_secret %}<span class="badge badge-verified">on</span>{% else %}<span class="badge">off</span>{% endif %}</td>
+                <td class="nowrap">{% if u.last_login_at %}{{ u.last_login_at | when(tz) }}{% else %}<span class="muted">never</span>{% endif %}</td>
+                <td class="right">
+                  {% if u.id != user.id and users | length > 1 %}
+                    <form method="post" action="/account/users/{{ u.id }}/delete"
+                          onsubmit="return confirm('Delete user {{ u.username }}?')">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button class="btn btn-sm btn-ghost" type="submit">Delete</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <form method="post" action="/account/users">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-grid mb-3">
+          <div class="field">
+            <label for="new_username">New username</label>
+            <input id="new_username" name="new_username" type="text" required>
+          </div>
+          <div class="field">
+            <label for="new_user_password">Password</label>
+            <input id="new_user_password" name="new_user_password" type="password"
+                   autocomplete="new-password" minlength="12" required>
+          </div>
+        </div>
+        <button class="btn" type="submit">Add user</button>
+      </form>
+    </section>
+  </main>
+
+  <aside>
+    <section class="card fieldset">
+      <h2>Active sessions</h2>
+      <div class="col gap-2">
+        {% for s in sessions %}
+          <div class="row gap-2 wrap">
+            <div class="col">
+              <span class="mono">{{ s.ip or 'unknown' }}</span>
+              <span class="muted truncate" style="max-width:220px">{{ s.user_agent or '—' }}</span>
+              <span class="muted">{{ s.created_at | when(tz) }}</span>
+            </div>
+            {% if s.id == current_session_id %}
+              <span class="badge badge-verified right">this one</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      {% if sessions | length > 1 %}
+        <form method="post" action="/account/sessions/revoke" class="mt-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-danger btn-sm" type="submit">Sign out all other sessions</button>
+        </form>
+      {% endif %}
+    </section>
+  </aside>
+</div>
+{% endblock %}

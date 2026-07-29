@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}First-time setup{% endblock %}
+
+{% block content %}
+<section class="auth-card setup-card card" aria-labelledby="setup-title">
+  <div class="auth-heading">
+    <span class="auth-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/>
+        <path d="M9 8h6M9 12h6"/>
+      </svg>
+    </span>
+    <div>
+      <h1 id="setup-title">Welcome to ReceiptManager</h1>
+      <p>This one-time setup creates the local admin account.</p>
+    </div>
+  </div>
+
+  <div class="setup-note">
+    There is no registration or password reset. Your password is stored as an
+    argon2id hash and cannot be recovered — if you lose it, you will need shell
+    access to the container to reset it.
+  </div>
+
+  {% if error %}
+    <div class="inline-message inline-message-error" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="auth-form" method="post" action="/setup">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="new-password"
+        minlength="12"
+        required
+        autofocus
+        {% if error %}aria-invalid="true"{% endif %}
+        aria-describedby="password-hint"
+      >
+      <span class="hint" id="password-hint">At least 12 characters.</span>
+    </div>
+
+    <div class="field">
+      <label for="password_confirm">Confirm password</label>
+      <input
+        id="password_confirm"
+        name="password_confirm"
+        type="password"
+        autocomplete="new-password"
+        minlength="12"
+        required
+        {% if error %}aria-invalid="true"{% endif %}
+      >
+    </div>
+
+    <button class="btn btn-primary btn-block" type="submit">Create local admin</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}#{{ tx.short_code }} · {{ tx.merchant }}{% endblock %}
+
+{% block content %}
+<div class="detail-grid">
+  <main>
+    <header class="page-head">
+      <div>
+        <p class="mono muted">#{{ tx.short_code }}</p>
+        <h1>{{ tx.merchant }}</h1>
+        <p class="stat-value">{{ tx.amount_minor | money(tx.currency) }}</p>
+      </div>
+      <span class="badge badge-{{ tx.status.value }} right">{{ tx.status.value | replace('_', ' ') }}</span>
+    </header>
+
+    <section class="card card-pad mb-3">
+      <h2 class="mb-3">Receipts</h2>
+
+      {% if tx.attachments %}
+        <div class="receipt-grid">
+          {% for att in tx.attachments %}
+            <article class="receipt-tile">
+              <a href="/receipts/{{ att.id }}" target="_blank" rel="noopener">
+                {% if att.thumb_path %}
+                  <img src="/receipts/{{ att.id }}/thumb" alt="Receipt {{ att.original_filename }}" loading="lazy">
+                {% else %}
+                  <div class="receipt-meta">{{ att.mime }}</div>
+                {% endif %}
+              </a>
+              <div class="receipt-meta">
+                <div class="truncate" title="{{ att.original_filename }}">{{ att.original_filename or 'receipt' }}</div>
+                <div class="muted">
+                  {% if att.bytes >= 1048576 %}{{ (att.bytes / 1048576) | round(1) }} MB
+                  {% else %}{{ (att.bytes / 1024) | round(1) }} KB{% endif %}
+                  {% if att.uploader_name %} · {{ att.uploader_name }}{% endif %}
+                </div>
+                <form method="post" action="/attachments/{{ att.id }}/detach" class="mt-3">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="btn btn-sm btn-ghost" type="submit">Detach</button>
+                </form>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state"><p>No receipt yet.</p></div>
+      {% endif %}
+    </section>
+
+    {% if orphans %}
+      <section class="card card-pad mb-3">
+        <h2 class="mb-3">Attach an unassigned receipt</h2>
+        <form method="post" action="/transactions/{{ tx.short_code }}/attach">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="field">
+            <label for="attachment-id">Receipt</label>
+            <select id="attachment-id" name="attachment_id" required>
+              <option value="">Choose a receipt…</option>
+              {% for att in orphans %}
+                <option value="{{ att.id }}">
+                  {{ att.original_filename or 'receipt' }} · {{ att.received_at | when(tz) }}
+                </option>
+              {% endfor %}
+            </select>
+            <span class="hint">Manual attach always works, including for lapsed charges.</span>
+          </div>
+          <button class="btn btn-primary mt-3" type="submit">Attach receipt</button>
+        </form>
+      </section>
+    {% endif %}
+
+    {% if email %}
+      <section class="card card-pad">
+        <h2 class="mb-3">Raw email</h2>
+        <dl class="kv mb-3">
+          <dt>Sender</dt><dd class="truncate">{{ email.sender }}</dd>
+          <dt>Subject</dt><dd>{{ email.subject }}</dd>
+          <dt>Received</dt><dd>{{ email.received_at | when_full(tz) }}</dd>
+        </dl>
+        {% if email.parse_error %}
+          <p class="field-error mb-3">{{ email.parse_error }}</p>
+        {% endif %}
+        <pre class="raw-body">{{ email.body_text or '(no plain-text body)' }}</pre>
+      </section>
+    {% endif %}
+  </main>
+
+  <aside>
+    <section class="card card-pad mb-3">
+      <h2 class="mb-3">Edit</h2>
+      <form method="post" action="/transactions/{{ tx.short_code }}/update" class="auth-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <div class="field">
+          <label for="merchant">Merchant</label>
+          <input id="merchant" name="merchant" type="text" value="{{ tx.merchant }}">
+        </div>
+
+        <div class="field">
+          <label for="amount">Amount</label>
+          <input id="amount" name="amount" type="text" inputmode="decimal"
+                 value="{{ '%.2f'|format(tx.amount_minor / 100) }}">
+        </div>
+
+        <div class="field">
+          <label for="category">Category</label>
+          <input id="category" name="category" type="text" value="{{ tx.category or '' }}">
+        </div>
+
+        <div class="field">
+          <label for="status">Status</label>
+          <select id="status" name="status">
+            {% for status in statuses %}
+              <option value="{{ status }}" {% if tx.status.value == status %}selected{% endif %}>
+                {{ status | replace('_', ' ') }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="notes">Notes</label>
+          <textarea id="notes" name="notes" rows="4">{{ tx.notes or '' }}</textarea>
+        </div>
+
+        <button class="btn btn-primary" type="submit">Save changes</button>
+      </form>
+    </section>
+
+    <section class="card card-pad">
+      <h2 class="mb-3">Metadata</h2>
+      <dl class="kv">
+        <dt>Code</dt><dd class="mono">#{{ tx.short_code }}</dd>
+        <dt>Occurred</dt><dd>{{ tx.occurred_at | when_full(tz) }}</dd>
+        <dt>Card</dt><dd>{% if tx.card_last4 %}•••• {{ tx.card_last4 }}{% else %}—{% endif %}</dd>
+        <dt>Cardholder</dt><dd>{{ tx.cardholder or '—' }}</dd>
+        <dt>Currency</dt><dd>{{ tx.currency }}</dd>
+        <dt>Notified</dt><dd>{% if tx.notified_at %}{{ tx.notified_at | when_full(tz) }}{% else %}—{% endif %}</dd>
+        <dt>Matched</dt><dd>{% if tx.matched_at %}{{ tx.matched_at | when_full(tz) }}{% else %}—{% endif %}</dd>
+        {% if tx.is_refund %}
+          <dt>Refund of</dt>
+          <dd>
+            {% if tx.refund_of %}
+              <a class="mono" href="/transactions/{{ tx.refund_of.short_code }}">#{{ tx.refund_of.short_code }}</a>
+              — {{ tx.refund_of.merchant }}
+            {% else %}
+              <span class="muted">no matching charge found</span>
+            {% endif %}
+          </dd>
+        {% endif %}
+        {% if refunds %}
+          <dt>Refunded by</dt>
+          <dd>
+            {% for r in refunds %}
+              <a class="mono" href="/transactions/{{ r.short_code }}">#{{ r.short_code }}</a>
+              ({{ r.amount_minor | money(r.currency) }}){% if not loop.last %}, {% endif %}
+            {% endfor %}
+          </dd>
+        {% endif %}
+      </dl>
+    </section>
+  </aside>
+</div>
+{% endblock %}

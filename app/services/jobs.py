@@ -53,25 +53,54 @@ def enqueue(
     delay_seconds: float = 0.0,
     max_attempts: int = 8,
 ) -> Job | None:
-    """Queue a job. Returns None if ``idempotency_key`` is already queued.
+    """Queue a job. Returns None only if the same work is already *outstanding*.
 
     Uses a SAVEPOINT so a duplicate key does not poison the caller's transaction
     (which usually also holds the state change that produced this job).
+
+    A key belonging to an already-finished job is *replaced*, not treated as a
+    duplicate. That distinction is load-bearing: SQLite reuses rowids, so
+    deleting a transaction and ingesting another gives the new one the same id,
+    and a key like ``notify:1`` left behind by the old one would silently
+    suppress the new charge's notification — no job, no error, nothing to find.
+    Idempotency is meant to stop concurrent duplicates, not to blacklist a key
+    forever.
     """
-    job = Job(
-        kind=kind,
-        payload=payload or {},
-        idempotency_key=idempotency_key,
-        next_run_at=utcnow() + dt.timedelta(seconds=delay_seconds),
-        max_attempts=max_attempts,
-    )
+
+    def _build() -> Job:
+        return Job(
+            kind=kind,
+            payload=payload or {},
+            idempotency_key=idempotency_key,
+            next_run_at=utcnow() + dt.timedelta(seconds=delay_seconds),
+            max_attempts=max_attempts,
+        )
+
+    job = _build()
     try:
         with db.begin_nested():
             db.add(job)
             db.flush()
+        return job
     except IntegrityError:
-        logger.debug("Job %s already queued (%s)", kind, idempotency_key)
+        pass
+
+    existing = db.scalar(select(Job).where(Job.idempotency_key == idempotency_key))
+    if existing is None:  # vanished between the failure and the lookup
         return None
+    if existing.status in (JobStatus.pending, JobStatus.running):
+        logger.debug("Job %s already outstanding (%s)", kind, idempotency_key)
+        return None
+
+    logger.info(
+        "Replacing finished job %s (%s) so the key can be reused",
+        existing.id, idempotency_key,
+    )
+    db.delete(existing)
+    db.flush()
+    job = _build()
+    db.add(job)
+    db.flush()
     return job
 
 
@@ -181,6 +210,22 @@ async def work_forever(stop: asyncio.Event, *, batch: int = 5, idle_sleep: float
 def _with_session(fn: Callable[[Session], Any]) -> Any:
     with session_scope() as db:
         return fn(db)
+
+
+def discard_for_transaction(db: Session, transaction_id: int) -> int:
+    """Remove every job belonging to a transaction, whatever its status.
+
+    Called when the transaction is deleted. Its queued work is meaningless
+    without it, and — because SQLite reuses rowids — a leftover key such as
+    ``notify:1`` would otherwise suppress the notification for whatever charge
+    next lands on that id.
+    """
+    removed = 0
+    for job in db.scalars(select(Job)):
+        if (job.payload or {}).get("transaction_id") == transaction_id:
+            db.delete(job)
+            removed += 1
+    return removed
 
 
 def dead_jobs(db: Session, limit: int = 10) -> list[Job]:

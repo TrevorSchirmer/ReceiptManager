@@ -162,6 +162,22 @@
     </section>
 
     <section class="card card-pad mt-3">
+      <h2 class="mb-3">Discord</h2>
+      <p class="hint mb-3">
+        {% if tx.notify_message_id %}
+          Announced in the channel.
+        {% else %}
+          Not currently announced.
+        {% endif %}
+        Re-sending posts a fresh message and asks for the receipt again.
+      </p>
+      <form method="post" action="/transactions/{{ tx.short_code }}/notify">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn" type="submit">Send to Discord</button>
+      </form>
+    </section>
+
+    <section class="card card-pad mt-3">
       <h2 class="mb-3">Delete</h2>
       <p class="hint mb-3">
         Removes this charge and its originating email, so the same email can be

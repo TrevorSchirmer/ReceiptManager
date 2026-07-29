@@ -446,3 +446,93 @@ def test_dead_jobs_can_be_requeued(tmp_path, monkeypatch):
             assert revived.last_error is None
     finally:
         c.__exit__(None, None, None)
+
+
+def test_rowid_reuse_does_not_suppress_the_next_notification(tmp_path, monkeypatch):
+    """The bug this guards against was silent and total.
+
+    SQLite reuses rowids. Delete a transaction and ingest another, and the new
+    one gets the same id — so an idempotency key like `notify:1` left behind by
+    the deleted charge's finished job suppressed the new charge's notification
+    entirely. No job, no error, nothing in the logs; the charge simply sat in the
+    table and was never announced.
+    """
+    from sqlalchemy import func, select
+
+    from app.db import session_scope
+    from app.models import Job, Transaction, utcnow
+    from app.services import jobs
+
+    monkeypatch.setenv("RM_DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+
+    app.config.get_config.cache_clear()
+    app.db._engine = None
+    app.db._SessionFactory = None
+    from app.db import init_db
+
+    init_db()
+
+    def make(code: str) -> tuple[int, bool]:
+        with session_scope() as db:
+            tx = Transaction(short_code=code, occurred_at=utcnow(), merchant="X",
+                             amount_minor=1, currency="USD")
+            db.add(tx)
+            db.flush()
+            job = jobs.enqueue(db, kind="discord.notify",
+                               payload={"transaction_id": tx.id},
+                               idempotency_key=f"notify:{tx.id}")
+            return tx.id, job is not None
+
+    first_id, queued = make("1000")
+    assert queued
+
+    # The real sequence: the notification was sent before the charge was deleted.
+    with session_scope() as db:
+        from app.models import JobStatus
+
+        job = db.scalar(select(Job))
+        job.status = JobStatus.done
+        db.add(job)
+
+    with session_scope() as db:
+        db.delete(db.get(Transaction, first_id))
+
+    second_id, queued_again = make("1001")
+    assert second_id == first_id, "precondition: SQLite reused the rowid"
+    assert queued_again, "the new charge's notification was silently suppressed"
+
+    with session_scope() as db:
+        pending = db.scalar(
+            select(func.count(Job.id)).where(Job.kind == "discord.notify")
+        )
+        assert pending == 1, "the finished job should be replaced, not duplicated"
+
+
+def test_outstanding_work_is_still_deduplicated(tmp_path, monkeypatch):
+    """Replacing finished jobs must not weaken real duplicate suppression."""
+    from sqlalchemy import func, select
+
+    from app.db import session_scope
+    from app.models import Job
+    from app.services import jobs
+
+    monkeypatch.setenv("RM_DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+
+    app.config.get_config.cache_clear()
+    app.db._engine = None
+    app.db._SessionFactory = None
+    from app.db import init_db
+
+    init_db()
+
+    with session_scope() as db:
+        assert jobs.enqueue(db, kind="discord.notify", payload={}, idempotency_key="k") is not None
+        # Still pending: a second enqueue must be refused.
+        assert jobs.enqueue(db, kind="discord.notify", payload={}, idempotency_key="k") is None
+
+    with session_scope() as db:
+        assert db.scalar(select(func.count(Job.id))) == 1

@@ -348,6 +348,40 @@ async def detach(
     return redirect_with(target, success="Receipt moved to the orphan queue.")
 
 
+@router.post("/transactions/{code}/notify")
+async def resend_notification(
+    code: str,
+    csrf_token: str = Form(""),
+    auth=Depends(require_user),
+    db: OrmSession = Depends(get_db),
+):
+    """Re-announce a charge in Discord.
+
+    Recovery for anything that never made it out — and the way to re-post a
+    charge whose message was deleted from the channel by hand.
+    """
+    user, session = auth
+    verify_csrf(session, csrf_token)
+
+    tx = db.scalar(select(Transaction).where(Transaction.short_code == code))
+    if tx is None:
+        raise HTTPException(status_code=404, detail="No such transaction")
+
+    # The notify handler skips a charge that already has a message id, so clear
+    # it — the old message is gone or unwanted either way.
+    tx.notify_message_id = None
+    db.add(tx)
+    jobs.enqueue(
+        db,
+        kind="discord.notify",
+        payload={"transaction_id": tx.id},
+        idempotency_key=f"notify:{tx.id}:{int(utcnow().timestamp())}",
+    )
+    db.add(AuditLog(actor=user.username, action="transaction.renotified",
+                    entity="transaction", entity_id=code))
+    return redirect_with(f"/transactions/{code}", success="Queued for Discord.")
+
+
 @router.post("/transactions/{code}/delete")
 async def delete_transaction(
     code: str,
@@ -401,6 +435,10 @@ async def delete_transaction(
     for other in db.scalars(select(Transaction).where(Transaction.refund_of_id == tx.id)):
         other.refund_of_id = None
         db.add(other)
+
+    # Its queued work is meaningless without it, and a leftover idempotency
+    # key would suppress the notification for whatever charge reuses this id.
+    jobs.discard_for_transaction(db, tx.id)
 
     email_id = tx.email_id
     short_code, merchant, amount = tx.short_code, tx.merchant, tx.amount_minor

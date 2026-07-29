@@ -60,7 +60,10 @@ DISCORD_CHANNEL_ID = Key("discord.channel_id", "str", "", "Channel ID")
 DISCORD_ALLOWED_UPLOADERS = Key(
     "discord.allowed_uploaders", "text", "", "Allowed uploader IDs",
     "Comma-separated Discord user IDs permitted to submit receipts. Leave blank "
-    "to accept anyone in the channel — not recommended.",
+    "to accept anyone who can see the channel — the right choice when channel "
+    "access is already restricted, since the channel is then the control. Run "
+    "/whoami in Discord to find an ID. Every upload records who sent it either "
+    "way.",
 )
 DISCORD_DELETE_RECEIPT = Key(
     "discord.delete_receipt", "bool", "true", "Delete the receipt message",

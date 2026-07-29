@@ -167,9 +167,13 @@ reset — put it in your password manager), then in **Settings**:
 **Microsoft Graph** — tenant ID, client ID, client secret, mailbox. Save, then
 click **Look up mail folders** and pick `Card Alerts`. Save again.
 
-**Discord** — bot token, channel ID, and your user ID in **Allowed uploader
-IDs**. Leaving that blank lets anyone in the channel put receipts into your tax
-records.
+**Discord** — bot token and channel ID.
+
+**Allowed uploader IDs** is a second gate on top of Discord's own channel
+permissions. Leave it blank if the channel is already restricted to the right
+people — the channel is then the control, and every upload still records who
+sent it. Fill it in only when the channel is broader than the set of people who
+should be touching financial records. `/whoami` gives you an ID.
 
 **Workflow** — set the **timezone** and default currency. Every export date
 depends on the timezone.

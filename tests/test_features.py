@@ -258,7 +258,9 @@ def _client(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
     monkeypatch.setenv("RM_DATA_DIR", str(tmp_path))
-    import app.config, app.db, app.security
+    import app.config
+    import app.db
+    import app.security
 
     app.config.get_config.cache_clear()
     app.db._engine = None

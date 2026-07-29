@@ -200,8 +200,24 @@ cd ReceiptManager
 sudo bash deploy/install.sh
 ```
 
+Run it **inside the container**, not on the Proxmox host — the installer refuses
+if it detects it is on the node.
+
 Needs outbound internet: PyPI for dependencies, unpkg for HTMX. The HTMX fetch
 is non-fatal — only the parse-rule tester's live preview uses it.
+
+The installer is safe to re-run: the service user, directories, venv and systemd
+unit are all created idempotently.
+
+**If the service account cannot write to `/data`**, the mountpoint is owned by
+the host rather than by the container's mapped root. Fix it from the Proxmox
+host, where an unprivileged container's root is uid 100000:
+
+```bash
+pct stop <vmid>
+chown -R 100000:100000 /path/to/mountpoint   # see: pct config <vmid>
+pct start <vmid>
+```
 
 ---
 

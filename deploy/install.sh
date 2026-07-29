@@ -22,6 +22,18 @@ die()  { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || die "Run as root (or with sudo)."
 
+# Refuse to install onto the hypervisor itself. This is meant to run *inside* the
+# container; on the Proxmox host it would scatter a service user, a systemd unit
+# and a cron job across the node.
+if [[ -d /etc/pve ]] \
+   && ! systemd-detect-virt --container --quiet 2>/dev/null \
+   && [[ "${RM_ALLOW_HOST_INSTALL:-0}" != "1" ]]; then
+    die "This looks like the Proxmox host, not a container.
+  Run it inside the LXC instead:
+    pct exec <vmid> -- bash /opt/src/deploy/install.sh
+  Or set RM_ALLOW_HOST_INSTALL=1 if you really mean to install on this node."
+fi
+
 log "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
@@ -38,8 +50,31 @@ fi
 
 log "Creating ${DATA_DIR}"
 mkdir -p "$DATA_DIR"/{receipts,thumbs,tmp,backups}
-chown -R "$APP_USER:$APP_USER" "$DATA_DIR"
-chmod 750 "$DATA_DIR"
+
+# Chown only the directories this app owns, never the mount root recursively.
+#
+# A freshly formatted ext4 volume — which is what an LXC mountpoint is — contains
+# a lost+found owned by host uid 0. In an unprivileged container that maps to
+# nobody, so `chown -R` over the mount root fails on it and aborts the install.
+# The app has no business owning lost+found anyway.
+for sub in receipts thumbs tmp backups; do
+    chown -R "$APP_USER:$APP_USER" "$DATA_DIR/$sub"
+done
+
+# The mount root itself may be owned by the host; the app only needs to traverse
+# and write inside it, so a failure here is not fatal.
+chown "$APP_USER:$APP_USER" "$DATA_DIR" 2>/dev/null \
+    || warn "Could not chown ${DATA_DIR} itself (normal for an LXC mountpoint) — continuing."
+chmod 750 "$DATA_DIR" 2>/dev/null || true
+
+# Prove the service account can actually write there before going further; a
+# failure at this point is far cheaper to diagnose than one at first boot.
+if ! runuser -u "$APP_USER" -- test -w "$DATA_DIR"; then
+    die "${APP_USER} cannot write to ${DATA_DIR}. Check the mountpoint ownership:
+    ls -land ${DATA_DIR}
+  On an unprivileged LXC, run this on the Proxmox host:
+    chown -R 100000:100000 /path/to/the/mountpoint/on/the/host"
+fi
 
 log "Installing application into ${APP_DIR}"
 mkdir -p "$APP_DIR"

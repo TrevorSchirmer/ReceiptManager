@@ -145,7 +145,7 @@ def run() -> None:
         port=cfg.port,
         log_config=None,
         proxy_headers=True,
-        forwarded_allow_ips="*",
+        forwarded_allow_ips=cfg.forwarded_allow_ips,
     )
 
 

@@ -140,7 +140,17 @@ sed -e "s#/opt/receiptmanager#${APP_DIR}#g" \
     "$REPO_DIR/deploy/receiptmanager.service" >/etc/systemd/system/receiptmanager.service
 
 systemctl daemon-reload
-systemctl enable --now receiptmanager
+systemctl enable receiptmanager
+
+# restart, not `enable --now`.
+#
+# `--now` only *starts* a stopped service; on an already-running one it does
+# nothing. Re-installing would then leave new templates on disk — Jinja reads
+# those per request — while the old Python stayed loaded in memory. A template
+# referencing a context variable the running code does not pass becomes a 500
+# on that page alone, which is a genuinely confusing way to fail.
+log "Restarting receiptmanager"
+systemctl restart receiptmanager
 
 sleep 2
 if ! systemctl is-active --quiet receiptmanager; then

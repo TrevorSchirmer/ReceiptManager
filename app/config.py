@@ -26,7 +26,19 @@ class Config(BaseSettings):
 
     # Trusted origin for CSRF/cookie hardening. Set to the real https:// URL in prod.
     base_url: str = "http://localhost:8080"
+
+    # Marks the session cookie Secure, so the browser only ever sends it over
+    # TLS. Turn this on when a reverse proxy terminates HTTPS in front of the
+    # app — and only then: with it on, plain-HTTP access cannot log in at all,
+    # because the browser withholds the cookie.
     secure_cookies: bool = False
+
+    # Which upstreams may set X-Forwarded-For / X-Forwarded-Proto.
+    #
+    # "*" trusts those headers from anything that can reach the port, which lets
+    # a direct caller forge its apparent client IP in the logs and in login
+    # throttling. Behind a reverse proxy, set this to the proxy's IP.
+    forwarded_allow_ips: str = "*"
 
     session_ttl_hours: int = 24 * 14
     login_max_attempts: int = 8

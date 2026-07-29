@@ -242,3 +242,78 @@ def test_login_does_not_reveal_whether_a_username_exists(client):
     assert real.status_code == fake.status_code == 401
     assert "Incorrect username or password" in real.text
     assert "Incorrect username or password" in fake.text
+
+
+# --------------------------------------------------------------------------- #
+# Secret fields
+# --------------------------------------------------------------------------- #
+
+AZURE_SHAPED_SECRET = "6LI8Q~exampleFAKEsecretNOTreal0123456789"   # 40 chars
+
+
+def test_secret_is_stored_whole_and_never_rendered_back(client):
+    """Full-length round trip, and the value never returns to the browser."""
+    from app import settings_keys as sk
+    from app.db import session_scope
+
+    token = _csrf(client, "/settings")
+    client.post(
+        "/settings",
+        data={"csrf_token": token, "graph.client_secret": AZURE_SHAPED_SECRET},
+        follow_redirects=False,
+    )
+
+    with session_scope() as db:
+        assert sk.get_str(db, sk.GRAPH_CLIENT_SECRET) == AZURE_SHAPED_SECRET
+
+    page = client.get("/settings").text
+    assert AZURE_SHAPED_SECRET not in page, "the secret was echoed back to the browser"
+    # Rendered empty, not pre-filled with a mask: a mask in the value attribute
+    # reads as a truncated secret, and typing into it corrupts the credential.
+    assert 'id="graph.client_secret" name="graph.client_secret" type="password"\n' in page \
+        or 'value=""' in page
+    assert "••••••••" not in page.split('id="graph.client_secret"')[1][:200]
+    assert "saved" in page  # the set/not-set indicator
+
+
+def test_blank_secret_does_not_wipe_the_stored_one(client):
+    from app import settings_keys as sk
+    from app.db import session_scope
+
+    token = _csrf(client, "/settings")
+    client.post("/settings", data={"csrf_token": token,
+                                   "graph.client_secret": AZURE_SHAPED_SECRET},
+                follow_redirects=False)
+    # Saving the form untouched submits an empty secret field.
+    client.post("/settings", data={"csrf_token": token, "graph.client_secret": "",
+                                   "graph.mailbox": "someone@example.com"},
+                follow_redirects=False)
+
+    with session_scope() as db:
+        assert sk.get_str(db, sk.GRAPH_CLIENT_SECRET) == AZURE_SHAPED_SECRET
+        assert sk.get_str(db, sk.GRAPH_MAILBOX) == "someone@example.com"
+
+
+def test_mask_residue_is_refused_rather_than_saved(client):
+    """A stale pre-filled page must not be able to corrupt a credential."""
+    from app import settings_keys as sk
+    from app.db import session_scope
+    from app.web.routes_settings import MASK
+
+    token = _csrf(client, "/settings")
+    client.post("/settings", data={"csrf_token": token,
+                                   "graph.client_secret": AZURE_SHAPED_SECRET},
+                follow_redirects=False)
+
+    r = client.post(
+        "/settings",
+        data={"csrf_token": token, "graph.client_secret": MASK + "NEW-ROTATED-SECRET"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert "mask+characters" in r.headers["location"].replace("%20", "+")
+
+    with session_scope() as db:
+        stored = sk.get_str(db, sk.GRAPH_CLIENT_SECRET)
+    assert stored == AZURE_SHAPED_SECRET, "mask residue overwrote the credential"
+    assert MASK not in stored

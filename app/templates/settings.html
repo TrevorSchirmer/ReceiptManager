@@ -2,7 +2,7 @@
 
 {% block title %}Settings{% endblock %}
 
-{% macro field(key, values, mask) %}
+{% macro field(key, values, mask, secret_set) %}
   <div class="field">
     {% if key.kind == 'bool' %}
       <div class="check-row">
@@ -14,15 +14,29 @@
       <label for="{{ key.name }}">{{ key.label }}</label>
       {% if key.kind == 'text' %}
         <textarea id="{{ key.name }}" name="{{ key.name }}" rows="3">{{ values[key.name] }}</textarea>
+      {% elif key.kind == 'secret' %}
+        <input id="{{ key.name }}" name="{{ key.name }}" type="password"
+               value="" autocomplete="off"
+               placeholder="{% if secret_set.get(key.name) %}Saved — leave blank to keep{% else %}Not set{% endif %}">
       {% else %}
         <input id="{{ key.name }}" name="{{ key.name }}"
-               type="{% if key.kind == 'secret' %}password{% elif key.kind == 'int' %}number{% else %}text{% endif %}"
-               value="{{ values[key.name] }}"
-               {% if key.kind == 'secret' %}autocomplete="off" placeholder="{{ mask }}"{% endif %}>
+               type="{% if key.kind == 'int' %}number{% else %}text{% endif %}"
+               value="{{ values[key.name] }}">
       {% endif %}
     {% endif %}
     {% if key.help %}<span class="hint">{{ key.help }}</span>{% endif %}
-    {% if key.kind == 'secret' %}<span class="hint">Stored encrypted. Leave unchanged to keep the current value.</span>{% endif %}
+    {% if key.kind == 'secret' %}
+      <span class="hint">
+        {% if secret_set.get(key.name) %}
+          <span class="badge badge-verified">saved</span>
+          Encrypted at rest and never shown again. Leave blank to keep it; paste a
+          new value to replace it.
+        {% else %}
+          <span class="badge badge-needs_attention">not set</span>
+          Encrypted at rest once saved.
+        {% endif %}
+      </span>
+    {% endif %}
   </div>
 {% endmacro %}
 
@@ -54,7 +68,7 @@
       <p class="muted" style="margin-top:-8px">{{ blurb }}</p>
       <div class="form-grid">
         {% for key in keys if key.name.startswith(prefix) %}
-          {{ field(key, values, mask) }}
+          {{ field(key, values, mask, secret_set) }}
         {% endfor %}
       </div>
 

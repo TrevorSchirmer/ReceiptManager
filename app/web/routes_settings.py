@@ -28,16 +28,26 @@ async def settings_page(
 ):
     user, session = auth
     values: dict[str, str] = {}
+    secret_set: dict[str, bool] = {}
     for key in sk.ALL_KEYS:
         if key.name == sk.GRAPH_DELTA_LINK.name:
             continue
-        # Secrets are never echoed back to the browser — only whether one is set.
-        values[key.name] = MASK if (key.is_secret and sk.get_str(db, key)) else sk.get_str(db, key)
+        if key.is_secret:
+            # A secret field is rendered EMPTY, never pre-filled — not with the
+            # value and not with a mask either. A mask in the value attribute
+            # looks like a truncated secret, and worse, clicking into the field
+            # and typing prepends those characters to the new credential and
+            # saves it. Only whether one exists is disclosed.
+            values[key.name] = ""
+            secret_set[key.name] = bool(sk.get_str(db, key))
+        else:
+            values[key.name] = sk.get_str(db, key)
 
     ctx = base_context(request, db, user, session, "settings")
     ctx.update({
         "keys": [k for k in sk.ALL_KEYS if k.name != sk.GRAPH_DELTA_LINK.name],
         "values": values,
+        "secret_set": secret_set,
         "mask": MASK,
         "graph_ready": sk.is_configured_for_graph(db),
         "discord_ready": sk.is_configured_for_discord(db),
@@ -56,6 +66,7 @@ async def settings_save(
     verify_csrf(session, str(form.get("csrf_token") or ""))
 
     changed: list[str] = []
+    rejected: list[str] = []
     for key in sk.ALL_KEYS:
         if key.name == sk.GRAPH_DELTA_LINK.name:
             continue
@@ -66,9 +77,15 @@ async def settings_save(
         else:
             new_value = str(form.get(key.name) or "").strip()
 
-        # An unchanged masked secret means "leave it alone" — never overwrite a
-        # stored credential with the placeholder.
+        # A blank secret means "leave it alone" — the field is rendered empty, so
+        # not touching it must never wipe a stored credential.
         if key.is_secret and new_value in ("", MASK):
+            continue
+        # Belt and braces for a stale page still serving a pre-filled mask: no
+        # real credential contains a bullet, so this can only be mask residue.
+        # Saving it would break auth in a way that looks like a wrong secret.
+        if key.is_secret and "•" in new_value:
+            rejected.append(key.label)
             continue
         if new_value != sk.get_str(db, key):
             sk.put(db, key, new_value)
@@ -81,6 +98,14 @@ async def settings_save(
         if any(n.startswith("graph.") and n != sk.GRAPH_POLL_SECONDS.name for n in changed):
             sk.put(db, sk.GRAPH_DELTA_LINK, "")
 
+    if rejected:
+        return redirect_with(
+            "/settings",
+            error=(
+                f"Not saved: {', '.join(rejected)} contained mask characters. "
+                "Reload the page and paste the value into the empty field."
+            ),
+        )
     return redirect_with("/settings", success=f"Saved {len(changed)} setting(s)."
                          if changed else "No changes.")
 

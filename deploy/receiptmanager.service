@@ -1,0 +1,46 @@
+[Unit]
+Description=ReceiptManager — Outlook charge alerts to Discord receipt capture
+Documentation=https://github.com/tschirmer/ReceiptManager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=receiptmanager
+Group=receiptmanager
+WorkingDirectory=/opt/receiptmanager
+
+Environment=RM_DATA_DIR=/data
+Environment=RM_HOST=0.0.0.0
+Environment=RM_PORT=8080
+Environment=RM_LOG_LEVEL=INFO
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/opt/receiptmanager/.venv/bin/receiptmanager
+
+Restart=always
+RestartSec=5
+# Do not give up: a transient Discord or Graph outage must not permanently stop
+# ingest, because a stopped ingest silently loses charges.
+StartLimitIntervalSec=0
+
+# Hardening. /data is the only writable path the service needs.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=receiptmanager
+
+[Install]
+WantedBy=multi-user.target

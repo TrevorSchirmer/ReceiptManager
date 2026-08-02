@@ -283,6 +283,42 @@ Phase one only: connect the company and pull the chart of accounts, so categorie
 become real QuickBooks accounts instead of free text. Matching and write-back come
 later.
 
+### First: get transactions out of "For Review"
+
+Card-synced transactions land in **Banking → For Review** (shown as *pending*).
+That queue belongs to Intuit's bank-feed integration and is **not visible to the
+API** — so nothing there can be matched or categorised by this app.
+
+They have to reach the register first. One bank rule does it for good:
+
+**Banking → Rules → New rule**
+
+| | |
+|---|---|
+| Applies to | Money out, on the card account |
+| Conditions | Amount is greater than 0 (i.e. everything) |
+| Category | **Uncategorized Expense** |
+| **Auto-add** | **on** |
+
+New transactions then bypass For Review and land in the register uncategorised,
+where Receipt Manager can find them. Existing pending ones can be cleared in bulk:
+select all in For Review and **Accept**.
+
+**Understand what this changes.** QuickBooks stops being the review gate. A
+fraudulent or mis-posted charge gets added to the books automatically rather than
+pausing for a human.
+
+That is the intended trade, not a side effect: the review moves to Receipt
+Manager, where you see the charge **with its receipt attached** — which is a
+better basis for judging it than a vendor name and an amount. But it is a
+deliberate bookkeeping decision, and everything added this way sits in
+*Uncategorized Expense* until categorised, so nothing is silently filed as
+legitimate.
+
+If you would rather keep QuickBooks as the gate, skip the auto-add and simply
+accept the queue in bulk whenever you clear it. Matching then runs a day or two
+behind you instead of ahead.
+
 **HTTPS is a prerequisite** — Intuit requires an https redirect URI for
 production keys. See §8.
 

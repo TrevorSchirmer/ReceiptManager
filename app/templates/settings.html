@@ -59,7 +59,8 @@
     ('Microsoft Graph', 'graph.', 'App-only credentials. Scope the app registration to a single mailbox with an Exchange Application Access Policy.'),
     ('Email filters', 'filter.', 'Coarse pre-filter applied before parse rules run. Leave blank to accept everything in the folder.'),
     ('Discord', 'discord.', 'The bot needs the MESSAGE_CONTENT privileged intent and Manage Messages in the channel.'),
-    ('Workflow', 'workflow.', 'Lapsing, the daily digest, and the ingest dead-man\'s switch.')
+    ('Workflow', 'workflow.', 'Lapsing, the daily digest, and the ingest dead-man\'s switch.'),
+    ('QuickBooks Online', 'qbo.', 'Credentials from your Intuit developer app. The redirect URI is a browser redirect, not a callback Intuit connects to, so an internal-only hostname works — but Intuit requires https.')
   ] %}
 
   {% for title, prefix, blurb in groups %}
@@ -71,6 +72,34 @@
           {{ field(key, values, mask, secret_set) }}
         {% endfor %}
       </div>
+
+      {% if prefix == 'qbo.' %}
+        <div class="row gap-2 wrap mt-3">
+          {% if qbo_connected %}
+            <span class="badge badge-verified">Connected</span>
+            {% if qbo_company %}<span class="muted">{{ qbo_company }}</span>{% endif %}
+          {% elif qbo_configured %}
+            <a class="btn btn-primary" href="/qbo/connect">Connect to QuickBooks</a>
+            <span class="hint">Save the credentials first, then authorise.</span>
+          {% else %}
+            <span class="hint">Enter the client ID, secret and redirect URI, then save.</span>
+          {% endif %}
+        </div>
+        {% if qbo_connected %}
+          <div class="row gap-2 wrap mt-3">
+            <form method="post" action="/qbo/sync-accounts">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn" type="submit">Refresh chart of accounts</button>
+            </form>
+            <form method="post" action="/qbo/disconnect"
+                  onsubmit="return confirm('Disconnect QuickBooks?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-danger" type="submit">Disconnect</button>
+            </form>
+            <span class="hint">{{ qbo_account_count }} expense account(s) cached.</span>
+          </div>
+        {% endif %}
+      {% endif %}
 
       {% if prefix == 'graph.' %}
         <div class="row gap-2 wrap mt-3">

@@ -21,11 +21,12 @@ from app import settings_keys as sk
 from app.config import get_config
 from app.db import init_db, run_db, session_scope
 from app.discordbot import get_service
-from app.services import ingest, jobs, scheduler
+from app.services import ingest, jobs, qbo_sync, scheduler  # noqa: F401 (registers handlers)
 from app.web import (
     routes_account,
     routes_auth,
     routes_export,
+    routes_qbo,
     routes_settings,
     routes_ui,
 )
@@ -128,6 +129,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_settings.router)
     app.include_router(routes_export.router)
     app.include_router(routes_account.router)
+    app.include_router(routes_qbo.router)
     return app
 
 

@@ -144,6 +144,15 @@ def health_snapshot(db: OrmSession) -> dict[str, Any]:
     stats = jobs.queue_stats(db)
     dead_jobs = jobs.dead_jobs(db)
 
+    # QuickBooks: the refresh token expires after ~100 days of non-use, and a
+    # lapsed one stops the integration with no other outward sign.
+    qbo_connected = sk.is_connected_to_qbo(db)
+    qbo_refresh_expires = _parse(get_setting(db, sk.QBO_REFRESH_EXPIRES_AT.name))
+    qbo_days_left: int | None = None
+    if qbo_connected and qbo_refresh_expires is not None:
+        qbo_days_left = (qbo_refresh_expires - dt.datetime.now(dt.UTC)).days
+    qbo_expiring = qbo_days_left is not None and qbo_days_left <= 14
+
     # A restore without the matching secret.key leaves credentials unreadable.
     unreadable = [
         k.label for k in (sk.GRAPH_CLIENT_SECRET, sk.DISCORD_BOT_TOKEN)
@@ -172,6 +181,7 @@ def health_snapshot(db: OrmSession) -> dict[str, Any]:
         and not mail_stale
         and stats.get("dead", 0) == 0
         and (not discord_configured or service.is_connected)
+        and not qbo_expiring
     )
 
     return {
@@ -190,6 +200,13 @@ def health_snapshot(db: OrmSession) -> dict[str, Any]:
         "heartbeat_hours": heartbeat_hours,
         "jobs": stats,
         "dead_jobs": dead_jobs,
+        "qbo_configured": sk.is_configured_for_qbo(db),
+        "qbo_connected": qbo_connected,
+        "qbo_company": sk.get_str(db, sk.QBO_COMPANY_NAME),
+        "qbo_refresh_expires": qbo_refresh_expires,
+        "qbo_days_left": qbo_days_left,
+        "qbo_expiring": qbo_expiring,
+        "qbo_accounts_synced": _parse(get_setting(db, sk.QBO_ACCOUNTS_SYNCED_AT.name)),
     }
 
 

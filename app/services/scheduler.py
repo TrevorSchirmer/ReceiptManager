@@ -47,6 +47,9 @@ def _due_tasks() -> list[str]:
                 if sk.get_bool(db, sk.DIGEST_ENABLED):
                     due.append("discord.digest")
                 due.append("workflow.lapse_sweep")
+                # A chart of accounts changes rarely; daily is ample.
+                if sk.is_connected_to_qbo(db):
+                    due.append("qbo.sync_accounts")
 
     return due
 

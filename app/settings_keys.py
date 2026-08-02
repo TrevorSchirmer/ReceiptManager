@@ -101,6 +101,44 @@ HEARTBEAT_HOURS = Key(
     "has arrived in this long, something is probably broken.",
 )
 
+# --- QuickBooks Online ----------------------------------------------------- #
+QBO_CLIENT_ID = Key("qbo.client_id", "str", "", "Client ID")
+QBO_CLIENT_SECRET = Key("qbo.client_secret", "secret", "", "Client secret")
+QBO_ENVIRONMENT = Key(
+    "qbo.environment", "str", "production", "Environment",
+    "'sandbox' or 'production'. Do the first connection against a sandbox "
+    "company — the OAuth flow and account shapes are identical and mistakes "
+    "cost nothing.",
+)
+QBO_REDIRECT_URI = Key(
+    "qbo.redirect_uri", "str", "", "Redirect URI",
+    "Must match the Intuit app exactly, e.g. https://receipts.example.com/qbo/callback. "
+    "This is a browser redirect, not a callback Intuit connects to, so an "
+    "internal-only hostname is fine — but Intuit requires https for production keys.",
+)
+
+# Filled in by the OAuth flow; not edited by hand.
+QBO_REALM_ID = Key("qbo.realm_id", "str", "", "Company (realm) ID")
+QBO_COMPANY_NAME = Key("qbo.company_name", "str", "", "Company name")
+QBO_ACCESS_TOKEN = Key("qbo.access_token", "secret", "", "Access token")
+QBO_REFRESH_TOKEN = Key("qbo.refresh_token", "secret", "", "Refresh token")
+QBO_ACCESS_EXPIRES_AT = Key("qbo.access_expires_at", "str", "", "Access token expiry")
+QBO_REFRESH_EXPIRES_AT = Key("qbo.refresh_expires_at", "str", "", "Refresh token expiry")
+QBO_ACCOUNTS_SYNCED_AT = Key("qbo.accounts_synced_at", "str", "", "Accounts last synced")
+
+# Settings the user does edit, but which belong to matching rather than auth.
+QBO_MATCH_WINDOW_DAYS = Key(
+    "qbo.match_window_days", "int", "14", "Match window (days)",
+    "How long to keep looking for a charge in QuickBooks before giving up. A "
+    "card transaction can take a couple of days to appear.",
+)
+QBO_AMOUNT_TOLERANCE_PCT = Key(
+    "qbo.amount_tolerance_pct", "int", "25", "Amount tolerance (%)",
+    "The card alert is a pre-authorisation, so the posted amount differs for "
+    "tips and currency conversion. Exact matching would miss every tipped "
+    "restaurant charge.",
+)
+
 ALL_KEYS: tuple[Key, ...] = (
     GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_MAILBOX,
     GRAPH_FOLDER_ID, GRAPH_FOLDER_NAME, GRAPH_POLL_SECONDS,
@@ -110,9 +148,27 @@ ALL_KEYS: tuple[Key, ...] = (
     DISCORD_SELECT_TIMEOUT_MIN,
     LAPSE_HOURS, DIGEST_HOUR, DIGEST_ENABLED, TIMEZONE, DEFAULT_CURRENCY,
     HEARTBEAT_HOURS,
+    QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_ENVIRONMENT, QBO_REDIRECT_URI,
+    QBO_REALM_ID, QBO_COMPANY_NAME, QBO_ACCESS_TOKEN, QBO_REFRESH_TOKEN,
+    QBO_ACCESS_EXPIRES_AT, QBO_REFRESH_EXPIRES_AT, QBO_ACCOUNTS_SYNCED_AT,
+    QBO_MATCH_WINDOW_DAYS, QBO_AMOUNT_TOLERANCE_PCT,
 )
 
 BY_NAME: dict[str, Key] = {k.name: k for k in ALL_KEYS}
+
+# Written by machinery, never by hand. Excluded from the settings form so a
+# stray edit cannot corrupt a cursor or an OAuth token.
+INTERNAL_KEYS: frozenset[str] = frozenset({
+    GRAPH_DELTA_LINK.name,
+    QBO_REALM_ID.name, QBO_COMPANY_NAME.name,
+    QBO_ACCESS_TOKEN.name, QBO_REFRESH_TOKEN.name,
+    QBO_ACCESS_EXPIRES_AT.name, QBO_REFRESH_EXPIRES_AT.name,
+    QBO_ACCOUNTS_SYNCED_AT.name,
+})
+
+
+def editable_keys() -> list[Key]:
+    return [k for k in ALL_KEYS if k.name not in INTERNAL_KEYS]
 
 
 def get_str(db: Session, key: Key) -> str:
@@ -141,6 +197,16 @@ def allowed_uploader_ids(db: Session) -> set[str]:
 
 def is_configured_for_discord(db: Session) -> bool:
     return bool(get_str(db, DISCORD_BOT_TOKEN) and get_str(db, DISCORD_CHANNEL_ID))
+
+
+def is_configured_for_qbo(db: Session) -> bool:
+    """Credentials entered. Says nothing about whether a company is connected."""
+    return all(get_str(db, k) for k in (QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI))
+
+
+def is_connected_to_qbo(db: Session) -> bool:
+    """A company has authorised the app and a refresh token is held."""
+    return bool(get_str(db, QBO_REALM_ID) and get_str(db, QBO_REFRESH_TOKEN))
 
 
 def is_configured_for_graph(db: Session) -> bool:

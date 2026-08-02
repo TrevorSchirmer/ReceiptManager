@@ -105,7 +105,22 @@
 
         <div class="field">
           <label for="category">Category</label>
-          <input id="category" name="category" type="text" value="{{ tx.category or '' }}">
+          {% if qbo_accounts %}
+            <input type="hidden" name="category_mode" value="qbo">
+            <select id="category_account_id" name="category_account_id">
+              <option value="">Uncategorised</option>
+              {% for account in qbo_accounts %}
+                <option value="{{ account.id }}"
+                        {% if tx.category_account_id == account.id %}selected{% endif %}>
+                  {{ account.label }}
+                </option>
+              {% endfor %}
+            </select>
+            <span class="hint">From your QuickBooks chart of accounts.</span>
+          {% else %}
+            <input id="category" name="category" type="text" value="{{ tx.category or '' }}">
+            <span class="hint">Free text. Connect QuickBooks to pick a real account instead.</span>
+          {% endif %}
         </div>
 
         <div class="field">

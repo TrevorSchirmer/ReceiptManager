@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session as OrmSession
 
 from app import settings_keys as sk
 from app.models import AuditLog, MerchantRule, ParseRule, RawEmail
-from app.services import ingest, parsing
+from app.services import ingest, parsing, qbo_sync
 from app.web.deps import base_context, get_db, redirect_with, require_user, templates, verify_csrf
 
 logger = logging.getLogger(__name__)
@@ -29,9 +29,7 @@ async def settings_page(
     user, session = auth
     values: dict[str, str] = {}
     secret_set: dict[str, bool] = {}
-    for key in sk.ALL_KEYS:
-        if key.name == sk.GRAPH_DELTA_LINK.name:
-            continue
+    for key in sk.editable_keys():
         if key.is_secret:
             # A secret field is rendered EMPTY, never pre-filled — not with the
             # value and not with a mask either. A mask in the value attribute
@@ -45,12 +43,16 @@ async def settings_page(
 
     ctx = base_context(request, db, user, session, "settings")
     ctx.update({
-        "keys": [k for k in sk.ALL_KEYS if k.name != sk.GRAPH_DELTA_LINK.name],
+        "keys": sk.editable_keys(),
         "values": values,
         "secret_set": secret_set,
         "mask": MASK,
         "graph_ready": sk.is_configured_for_graph(db),
         "discord_ready": sk.is_configured_for_discord(db),
+        "qbo_configured": sk.is_configured_for_qbo(db),
+        "qbo_connected": sk.is_connected_to_qbo(db),
+        "qbo_company": sk.get_str(db, sk.QBO_COMPANY_NAME),
+        "qbo_account_count": len(qbo_sync.active_accounts(db)),
     })
     return templates.TemplateResponse(request, "settings.html", ctx)
 
@@ -67,9 +69,7 @@ async def settings_save(
 
     changed: list[str] = []
     rejected: list[str] = []
-    for key in sk.ALL_KEYS:
-        if key.name == sk.GRAPH_DELTA_LINK.name:
-            continue
+    for key in sk.editable_keys():
         if key.kind == "bool":
             new_value = "true" if form.get(key.name) else "false"
         elif key.name not in form:

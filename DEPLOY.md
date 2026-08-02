@@ -277,6 +277,39 @@ Do this before trusting it with a real charge.
 
 ---
 
+## 7b. QuickBooks Online (optional)
+
+Phase one only: connect the company and pull the chart of accounts, so categories
+become real QuickBooks accounts instead of free text. Matching and write-back come
+later.
+
+**HTTPS is a prerequisite** — Intuit requires an https redirect URI for
+production keys. See §8.
+
+At **developer.intuit.com → My Apps → Create an app** (QuickBooks Online
+Accounting):
+
+- Copy the **Client ID** and **Client Secret** from the *Development* or
+  *Production* keys tab, matching whichever `Environment` you set in Settings.
+- Under **Redirect URIs**, add `https://<your-host>/qbo/callback` exactly as it
+  will appear in the browser.
+
+The redirect is a **browser** redirect — Intuit never connects to it — so an
+internal-only hostname is fine, provided the browser doing the authorisation can
+reach it.
+
+Then in **Settings → QuickBooks Online**: paste the client ID and secret, set the
+environment and redirect URI, **Save**, then **Connect to QuickBooks**. After
+authorising you should see the company name and a cached account count.
+
+Start against a **sandbox** company — the flow and account shapes are identical
+and mistakes cost nothing.
+
+Health shows when the authorisation expires. Intuit's refresh token lapses after
+about 100 days of non-use, and once it does the connection simply stops.
+
+---
+
 ## 8. Harden
 
 **Reachability.** The app serves plain HTTP and binds `0.0.0.0`. Pick one:

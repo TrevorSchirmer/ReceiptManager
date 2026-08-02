@@ -239,6 +239,32 @@ class MerchantRule(Base):
         return self.pattern.lower() in candidate.lower()
 
 
+class QboAccount(Base):
+    """A cached row from the QuickBooks chart of accounts.
+
+    Cached rather than fetched live because it is read on every page that offers
+    a category picker, and it changes about as often as a chart of accounts does
+    — which is to say rarely. Refreshed daily and on demand.
+    """
+
+    __tablename__ = "qbo_accounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    qbo_id: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    # QuickBooks nests accounts; the fully-qualified name is what makes
+    # "Meals" distinguishable from "Travel:Meals" in a flat <select>.
+    fully_qualified_name: Mapped[str] = mapped_column(String(512), default="")
+    account_type: Mapped[str] = mapped_column(String(64), default="")
+    account_sub_type: Mapped[Optional[str]] = mapped_column(String(64))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    synced_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+    @property
+    def label(self) -> str:
+        return self.fully_qualified_name or self.name
+
+
 class RawEmail(Base):
     __tablename__ = "emails_raw"
     __table_args__ = (Index("ix_emails_received", "received_at"),)
@@ -293,6 +319,31 @@ class Transaction(Base):
     # Reconciliation: the alert is the *authorization*. The posted amount can
     # differ (tips, FX). Filled in later from a statement import.
     amount_final_minor: Mapped[Optional[int]] = mapped_column(Integer)
+
+    # --- QuickBooks link --------------------------------------------------- #
+    # The chosen category as a real QuickBooks account, kept alongside the free
+    # text `category` rather than replacing it so existing rows and the CSV
+    # export are unaffected.
+    # Named explicitly: SQLite's batch migrations rebuild the table and cannot
+    # create an unnamed constraint ("Constraint must have a name").
+    category_account_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "qbo_accounts.id",
+            ondelete="SET NULL",
+            name="fk_transactions_category_account_id",
+        )
+    )
+    category_account: Mapped[Optional["QboAccount"]] = relationship()
+
+    qbo_txn_id: Mapped[Optional[str]] = mapped_column(String(32))
+    qbo_txn_type: Mapped[Optional[str]] = mapped_column(String(32))
+    # QuickBooks' optimistic-locking token. Stale means someone edited the
+    # transaction there; writing over it would discard their change.
+    qbo_sync_token: Mapped[Optional[str]] = mapped_column(String(32))
+    qbo_attachment_id: Mapped[Optional[str]] = mapped_column(String(32))
+    qbo_matched_at: Mapped[Optional[dt.datetime]] = mapped_column(UTCDateTime)
+    qbo_synced_at: Mapped[Optional[dt.datetime]] = mapped_column(UTCDateTime)
+    qbo_sync_error: Mapped[Optional[str]] = mapped_column(Text)
 
     # A refund points back at the charge it reverses. Self-referential so a
     # credit and its original stay linked in the export.

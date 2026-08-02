@@ -74,6 +74,45 @@
       </dl>
     </section>
 
+    <section class="card card-pad mb-3">
+      <h2 class="mb-3">QuickBooks</h2>
+      <dl class="kv">
+        <dt>Connected</dt>
+        <dd>
+          {% if health.qbo_connected %}
+            <span class="badge badge-verified">Yes</span>
+            {% if health.qbo_company %}{{ health.qbo_company }}{% endif %}
+          {% elif health.qbo_configured %}
+            <span class="badge badge-needs_attention">Not authorised</span>
+          {% else %}
+            <span class="badge">Not configured</span>
+          {% endif %}
+        </dd>
+        {% if health.qbo_connected %}
+          <dt>Authorisation expires</dt>
+          <dd>
+            {% if health.qbo_refresh_expires %}
+              {{ health.qbo_refresh_expires | when_full(tz) }}
+              {% if health.qbo_expiring %}
+                <span class="badge badge-needs_attention">{{ health.qbo_days_left }} days left</span>
+              {% else %}
+                <span class="muted">({{ health.qbo_days_left }} days)</span>
+              {% endif %}
+            {% else %}—{% endif %}
+          </dd>
+          <dt>Accounts synced</dt>
+          <dd>{% if health.qbo_accounts_synced %}{{ health.qbo_accounts_synced | when(tz) }}{% else %}<span class="muted">Never</span>{% endif %}</dd>
+        {% endif %}
+      </dl>
+      {% if health.qbo_expiring %}
+        <p class="hint mt-3">
+          The refresh token expires after about 100 days of non-use. Once it
+          lapses the connection stops with no other outward sign — reconnect from
+          <a href="/settings">Settings</a> before then.
+        </p>
+      {% endif %}
+    </section>
+
     {% if health.dead_jobs %}
       <section class="card card-pad mb-3">
         <h2 class="mb-3">Failed jobs</h2>

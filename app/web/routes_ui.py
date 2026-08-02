@@ -21,7 +21,7 @@ from app.models import (
     TransactionStatus,
     utcnow,
 )
-from app.services import jobs, storage
+from app.services import jobs, qbo_sync, storage
 from app.web.deps import (
     base_context,
     get_db,
@@ -225,6 +225,7 @@ async def transaction_detail(
         "email": email,
         "orphans": orphans,
         "refunds": refunds,
+        "qbo_accounts": qbo_sync.active_accounts(db),
         "statuses": [s.value for s in TransactionStatus],
     })
     return templates.TemplateResponse(request, "transaction_detail.html", ctx)
@@ -237,6 +238,8 @@ async def update_transaction(
     merchant: str = Form(""),
     amount: str = Form(""),
     category: str = Form(""),
+    category_account_id: str = Form(""),
+    category_mode: str = Form(""),
     notes: str = Form(""),
     status_value: str = Form("", alias="status"),
     auth=Depends(require_user),
@@ -263,7 +266,21 @@ async def update_transaction(
                 tx.amount_minor = minor
         except ValueError:
             return redirect_with(f"/transactions/{code}", error=f"Could not parse {amount!r}.")
-    if category != (tx.category or ""):
+    # `category_mode` says which control the form actually rendered. Without it
+    # an empty account id is ambiguous: it means "cleared" when the picker is on
+    # screen and "not shown at all" when QuickBooks is not connected.
+    if category_mode == "qbo":
+        from app.models import QboAccount
+
+        chosen = int(category_account_id) if category_account_id.strip().isdigit() else None
+        if chosen != tx.category_account_id:
+            account = db.get(QboAccount, chosen) if chosen else None
+            tx.category_account_id = account.id if account else None
+            # Mirror the name into the free-text field so search and the CSV
+            # export keep working exactly as before.
+            tx.category = account.label if account else None
+            changes.append(f"category -> {account.label if account else 'uncategorised'}")
+    elif category != (tx.category or ""):
         tx.category = category or None
         changes.append("category")
     if notes != (tx.notes or ""):

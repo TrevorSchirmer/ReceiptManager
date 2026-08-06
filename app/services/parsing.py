@@ -49,6 +49,28 @@ _CURRENCY_CODES: tuple[str, ...] = (
 _CURRENCY_CODE_RE = re.compile(r"\b(" + "|".join(_CURRENCY_CODES) + r")\b", re.IGNORECASE)
 _SYMBOL_TO_CODE = {"$": "USD", "£": "GBP", "€": "EUR", "¥": "JPY", "₹": "INR"}
 _DOLLAR_CODES = {"USD", "CAD", "AUD", "NZD", "SGD", "HKD", "MXN"}
+
+# A prefixed dollar sign names a *different* currency, and card issuers use these
+# freely: Amex writes "CA$300.00" for a Canadian charge. Treating that as USD
+# would record the wrong amount in the books with nothing to indicate it, so the
+# prefixes are matched before the bare "$" fallback — longest first, or "C$"
+# would shadow "CA$".
+_PREFIXED_DOLLAR: tuple[tuple[str, str], ...] = tuple(
+    sorted(
+        {
+            "CA$": "CAD", "C$": "CAD",
+            "US$": "USD", "U$": "USD",
+            "AU$": "AUD", "A$": "AUD",
+            "NZ$": "NZD",
+            "SG$": "SGD", "S$": "SGD",
+            "HK$": "HKD",
+            "MX$": "MXN",
+            "R$": "BRL",
+            "NT$": "TWD",
+        }.items(),
+        key=lambda item: -len(item[0]),
+    )
+)
 _NUMBER_RUN_RE = re.compile(r"[\d.,]*\d")
 _BETWEEN_DIGITS_SPACE_RE = re.compile(r"(?<=\d)\s+(?=\d)")
 _NON_DIGIT_RE = re.compile(r"\D")
@@ -356,6 +378,16 @@ def _detect_currency(text: str, default_currency: str | None) -> tuple[str, str]
     if code_match is not None:
         rest = (text[: code_match.start()] + text[code_match.end():]).strip()
         return rest, code_match.group(1).upper()
+
+    # Before the bare "$": "CA$300.00" is three hundred Canadian dollars, and
+    # reading it as USD would be wrong by the exchange rate, silently.
+    upper = text.upper()
+    for prefix, code in _PREFIXED_DOLLAR:
+        index = upper.find(prefix)
+        if index != -1:
+            rest = (text[:index] + text[index + len(prefix):]).strip()
+            return rest, code
+
     for symbol, code in _SYMBOL_TO_CODE.items():
         if symbol in text:
             if symbol == "$":

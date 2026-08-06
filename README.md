@@ -83,7 +83,7 @@ pipeline without spending money.
 Sender contains `americanexpress.com`, subject contains `Large Purchase`:
 
 ```regex
-Account Ending:\s*(?P<card_ending>\d+).*?\n(?P<merchant>[^\n]{2,60})\n+\$(?P<amount>[\d,]+\.\d{2})\*?\n+(?P<occurred_at>[A-Za-z]{3},\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4})
+Account Ending:\s*(?P<card_ending>\d+).*?\n(?P<merchant>[^\n]{2,60})\n+(?P<currency>[A-Z]{0,3}[$£€¥])\s*(?P<amount>[\d,]+\.\d{2})\*?\n+(?P<occurred_at>[A-Za-z]{3},\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4})
 ```
 
 It anchors on structure — an account-ending line, then a merchant line
@@ -91,9 +91,16 @@ immediately followed by an amount line — rather than on Amex's marketing copy,
 so wording changes won't break it. The amount is what disambiguates the
 merchant from the other capitalised lines earlier in the message.
 
+The `currency` group captures the prefix as well as the symbol, because a
+foreign charge appears as `CA$300.00` — requiring a bare `$` makes the rule
+miss it entirely, and ignoring the prefix records Canadian dollars as US ones.
+Prefixed forms (`CA$`, `US$`, `A$`, `NZ$`, `HK$`, `R$`, …) all resolve to the
+right ISO code.
+
 Note that Amex amounts carry a `*`: the alert is a pre-authorisation and the
 posted amount can differ, which is what the `final_amount` column is for.
-`tests/test_amex.py` locks this format in against a redacted real email.
+`tests/test_amex.py` locks both the domestic and foreign shapes in against a
+redacted real email.
 
 ## Slash commands
 

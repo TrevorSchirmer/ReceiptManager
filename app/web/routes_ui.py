@@ -55,14 +55,28 @@ async def dashboard(
     now = utcnow()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    mtd_total = int(
-        db.scalar(
-            select(func.coalesce(func.sum(Transaction.amount_minor), 0)).where(
+    # Totalled *per currency*. Summing minor units across currencies would add
+    # 300 CAD to a dollar figure as though they were the same unit — a number
+    # that looks authoritative and is simply wrong.
+    default_currency = sk.get_str(db, sk.DEFAULT_CURRENCY)
+    mtd_by_currency = {
+        row.currency: int(row.total or 0)
+        for row in db.execute(
+            select(
+                Transaction.currency,
+                func.coalesce(func.sum(Transaction.amount_minor), 0).label("total"),
+            )
+            .where(
                 Transaction.occurred_at >= month_start,
                 Transaction.status != TransactionStatus.ignored,
             )
+            .group_by(Transaction.currency)
         )
-        or 0
+    }
+    mtd_total = mtd_by_currency.get(default_currency, 0)
+    mtd_other = sorted(
+        (code, total) for code, total in mtd_by_currency.items()
+        if code != default_currency and total
     )
     outstanding = int(
         db.scalar(
@@ -103,7 +117,8 @@ async def dashboard(
     ctx = base_context(request, db, user, session, "dashboard")
     ctx.update({
         "mtd_total": mtd_total,
-        "mtd_display": money(mtd_total, sk.get_str(db, sk.DEFAULT_CURRENCY)),
+        "mtd_display": money(mtd_total, default_currency),
+        "mtd_other": [(code, money(total, code)) for code, total in mtd_other],
         "outstanding": outstanding,
         "lapsed": lapsed,
         "orphans": orphans,

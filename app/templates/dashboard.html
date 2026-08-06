@@ -14,6 +14,12 @@
   <div class="stat-tile">
     <div class="stat-label">Month to date</div>
     <div class="stat-value">{{ mtd_display }}</div>
+    {% if mtd_other %}
+      <div class="muted" style="font-size:0.72rem;margin-top:4px">
+        plus
+        {% for code, amount in mtd_other %}{{ amount }}{% if not loop.last %}, {% endif %}{% endfor %}
+      </div>
+    {% endif %}
   </div>
   <div class="stat-tile">
     <div class="stat-label">Awaiting receipt</div>

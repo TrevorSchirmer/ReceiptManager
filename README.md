@@ -73,7 +73,9 @@ New-ApplicationAccessPolicy -AppId <client-id> -PolicyScopeGroupId <mailbox> -Ac
 `card_ending`, `cardholder`, `occurred_at`. Only `amount` is required. Rules run
 against the *normalized plain text*, never the raw HTML. Use the live tester on
 the Parse rules page with a real alert email; you will not get it right first try,
-which is what **Re-parse stalled emails** is for.
+which is what **Edit** and **Re-parse stalled emails** are for — editing loads the
+rule back into the form and the tester, so you can iterate on a regex against a
+real email instead of retyping it.
 
 Then hit **Simulate email** in Settings to push a fake charge through the whole
 pipeline without spending money.

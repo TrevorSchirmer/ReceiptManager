@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session as OrmSession
@@ -142,15 +142,34 @@ async def list_mail_folders(
 @router.get("/rules")
 async def rules_page(
     request: Request,
+    edit: str = Query(""),
+    edit_merchant: str = Query(""),
     auth=Depends(require_user),
     db: OrmSession = Depends(get_db),
 ):
+    """Parse rules, merchant rules, and the live tester.
+
+    ``?edit=<id>`` loads a rule into the form rather than creating a new one —
+    without it the only way to change a rule was to delete and retype it.
+    """
     user, session = auth
     rules = list(db.scalars(select(ParseRule).order_by(ParseRule.priority, ParseRule.id)))
     merchant_rules = list(db.scalars(select(MerchantRule).order_by(MerchantRule.id)))
     sample = db.scalar(select(RawEmail).order_by(RawEmail.received_at.desc()))
+
+    editing = db.get(ParseRule, int(edit)) if edit.strip().isdigit() else None
+    editing_merchant = (
+        db.get(MerchantRule, int(edit_merchant)) if edit_merchant.strip().isdigit() else None
+    )
+
     ctx = base_context(request, db, user, session, "rules")
-    ctx.update({"rules": rules, "merchant_rules": merchant_rules, "sample": sample})
+    ctx.update({
+        "rules": rules,
+        "merchant_rules": merchant_rules,
+        "sample": sample,
+        "editing": editing,
+        "editing_merchant": editing_merchant,
+    })
     return templates.TemplateResponse(request, "rules.html", ctx)
 
 
@@ -180,9 +199,10 @@ async def rule_save(
     rule.default_currency = (str(form.get("default_currency") or "USD").strip() or "USD").upper()
     rule.date_format = str(form.get("date_format") or "").strip() or None
 
+    db.flush()
     db.add(AuditLog(actor=user.username, action="rule.saved", entity="parse_rule",
-                    entity_id=str(rule.id or "new"), detail=rule.name))
-    return redirect_with("/rules", success="Rule saved.")
+                    entity_id=str(rule.id), detail=rule.name))
+    return redirect_with("/rules", success=f"Saved {rule.name!r}.")
 
 
 @router.post("/rules/{rule_id}/delete")
@@ -230,9 +250,10 @@ async def merchant_rule_save(
     rule.category = str(form.get("category") or "").strip() or None
     rule.note = str(form.get("note") or "").strip() or None
 
+    db.flush()
     db.add(AuditLog(actor=user.username, action="merchant_rule.saved",
-                    entity="merchant_rule", entity_id=str(rule.id or "new"), detail=pattern))
-    return redirect_with("/rules", success="Merchant rule saved.")
+                    entity="merchant_rule", entity_id=str(rule.id), detail=pattern))
+    return redirect_with("/rules", success=f"Saved merchant rule {pattern!r}.")
 
 
 @router.post("/merchant-rules/{rule_id}/delete")

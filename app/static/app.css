@@ -795,3 +795,29 @@ input:disabled, select:disabled, textarea:disabled {
     animation: none !important;
   }
 }
+
+/* Editing an existing rule ------------------------------------------------ */
+/* Both action controls sit in one cell; the delete form is a block element,
+   so without this the Edit link and Delete button stack. */
+.row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* The form is far below the table, so the loaded row has to stay identifiable
+   when you scroll back up to it. */
+.row-editing > td {
+  background: var(--accent-soft);
+}
+
+.editing-banner {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+  color: var(--text);
+}

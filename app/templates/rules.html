@@ -35,7 +35,7 @@
         </thead>
         <tbody>
           {% for rule in rules %}
-            <tr>
+            <tr{% if editing and editing.id == rule.id %} class="row-editing"{% endif %}>
               <td class="num">{{ rule.priority }}</td>
               <td>{{ rule.name }}</td>
               <td class="truncate mono">{{ rule.sender_match or '(any)' }}</td>
@@ -45,11 +45,14 @@
                 {% else %}<span class="badge">off</span>{% endif %}
               </td>
               <td class="right">
-                <form method="post" action="/rules/{{ rule.id }}/delete"
-                      onsubmit="return confirm('Delete this rule?')">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  <button class="btn btn-sm btn-ghost" type="submit">Delete</button>
-                </form>
+                <div class="row-actions">
+                  <a class="btn btn-sm btn-ghost" href="/rules?edit={{ rule.id }}#rule-form">Edit</a>
+                  <form method="post" action="/rules/{{ rule.id }}/delete"
+                        onsubmit="return confirm('Delete this rule?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-ghost" type="submit">Delete</button>
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}
@@ -88,17 +91,21 @@
         </thead>
         <tbody>
           {% for rule in merchant_rules %}
-            <tr>
+            <tr{% if editing_merchant and editing_merchant.id == rule.id %} class="row-editing"{% endif %}>
               <td class="mono truncate">{{ rule.pattern }}{% if rule.is_regex %} <span class="badge">regex</span>{% endif %}</td>
               <td>{% if rule.skip_receipt %}<span class="badge badge-no_receipt_required">yes</span>{% else %}—{% endif %}</td>
               <td>{{ rule.category or '—' }}</td>
               <td>{% if rule.enabled %}<span class="badge badge-verified">on</span>{% else %}<span class="badge">off</span>{% endif %}</td>
               <td class="right">
-                <form method="post" action="/merchant-rules/{{ rule.id }}/delete"
-                      onsubmit="return confirm('Delete this merchant rule?')">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  <button class="btn btn-sm btn-ghost" type="submit">Delete</button>
-                </form>
+                <div class="row-actions">
+                  <a class="btn btn-sm btn-ghost"
+                     href="/rules?edit_merchant={{ rule.id }}#merchant-form">Edit</a>
+                  <form method="post" action="/merchant-rules/{{ rule.id }}/delete"
+                        onsubmit="return confirm('Delete this merchant rule?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-ghost" type="submit">Delete</button>
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}
@@ -107,72 +114,99 @@
     </div>
   {% endif %}
 
-  <form method="post" action="/merchant-rules">
+  <form method="post" action="/merchant-rules" id="merchant-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="id" value="{{ editing_merchant.id if editing_merchant else '' }}">
+    {% if editing_merchant %}
+      <p class="editing-banner">
+        Editing <strong class="mono">{{ editing_merchant.pattern }}</strong>
+        · <a href="/rules#merchant-form">add a new one instead</a>
+      </p>
+    {% endif %}
     <div class="form-grid mb-3">
       <div class="field">
         <label for="pattern">Merchant contains</label>
-        <input id="pattern" name="pattern" type="text" placeholder="GITHUB" required>
+        <input id="pattern" name="pattern" type="text" placeholder="GITHUB" required
+               value="{{ editing_merchant.pattern if editing_merchant else '' }}">
       </div>
       <div class="field">
         <label for="mr-category">Category</label>
-        <input id="mr-category" name="category" type="text" placeholder="Software">
+        <input id="mr-category" name="category" type="text" placeholder="Software"
+               value="{{ editing_merchant.category if editing_merchant and editing_merchant.category else '' }}">
       </div>
       <div class="field">
         <label for="mr-note">Note to attach</label>
-        <input id="mr-note" name="note" type="text" placeholder="Recurring subscription">
+        <input id="mr-note" name="note" type="text" placeholder="Recurring subscription"
+               value="{{ editing_merchant.note if editing_merchant and editing_merchant.note else '' }}">
       </div>
     </div>
     <div class="row gap-3 wrap mb-3">
       <div class="check-row">
-        <input type="checkbox" id="mr-enabled" name="enabled" checked>
+        <input type="checkbox" id="mr-enabled" name="enabled"
+               {% if not editing_merchant or editing_merchant.enabled %}checked{% endif %}>
         <label for="mr-enabled">Enabled</label>
       </div>
       <div class="check-row">
-        <input type="checkbox" id="mr-skip" name="skip_receipt" checked>
+        <input type="checkbox" id="mr-skip" name="skip_receipt"
+               {% if not editing_merchant or editing_merchant.skip_receipt %}checked{% endif %}>
         <label for="mr-skip">No receipt required</label>
       </div>
       <div class="check-row">
-        <input type="checkbox" id="mr-regex" name="is_regex">
+        <input type="checkbox" id="mr-regex" name="is_regex"
+               {% if editing_merchant and editing_merchant.is_regex %}checked{% endif %}>
         <label for="mr-regex">Pattern is a regex</label>
       </div>
     </div>
-    <button class="btn btn-primary" type="submit">Add merchant rule</button>
+    <button class="btn btn-primary" type="submit">
+      {{ 'Save changes' if editing_merchant else 'Add merchant rule' }}
+    </button>
   </form>
 </section>
 
 <div class="detail-grid">
   <section class="card fieldset">
-    <h2>Add or edit a rule</h2>
+    <h2>{{ 'Edit rule' if editing else 'Add a rule' }}</h2>
     <form method="post" action="/rules" id="rule-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="id" value="">
+      <input type="hidden" name="id" value="{{ editing.id if editing else '' }}">
+      {% if editing %}
+        <p class="editing-banner">
+          Editing <strong>{{ editing.name }}</strong>
+          · <a href="/rules#rule-form">add a new rule instead</a>
+        </p>
+      {% endif %}
 
       <div class="form-grid mb-3">
         <div class="field">
           <label for="name">Rule name</label>
-          <input id="name" name="name" type="text" placeholder="Amex alerts" required>
+          <input id="name" name="name" type="text" placeholder="Amex alerts" required
+                 value="{{ editing.name if editing else '' }}">
         </div>
         <div class="field">
           <label for="priority">Priority</label>
-          <input id="priority" name="priority" type="number" value="100">
+          <input id="priority" name="priority" type="number"
+                 value="{{ editing.priority if editing else 100 }}">
           <span class="hint">Lower runs first.</span>
         </div>
         <div class="field">
           <label for="sender_match">Sender contains</label>
-          <input id="sender_match" name="sender_match" type="text" placeholder="alerts@amex.com">
+          <input id="sender_match" name="sender_match" type="text" placeholder="alerts@amex.com"
+                 value="{{ editing.sender_match if editing and editing.sender_match else '' }}">
         </div>
         <div class="field">
           <label for="subject_match">Subject contains</label>
-          <input id="subject_match" name="subject_match" type="text" placeholder="Transaction alert">
+          <input id="subject_match" name="subject_match" type="text" placeholder="Transaction alert"
+                 value="{{ editing.subject_match if editing and editing.subject_match else '' }}">
         </div>
         <div class="field">
           <label for="default_currency">Default currency</label>
-          <input id="default_currency" name="default_currency" type="text" value="USD" maxlength="3">
+          <input id="default_currency" name="default_currency" type="text" maxlength="3"
+                 value="{{ editing.default_currency if editing else 'USD' }}">
         </div>
         <div class="field">
           <label for="date_format">Date format</label>
-          <input id="date_format" name="date_format" type="text" placeholder="%m/%d/%Y %I:%M %p">
+          <input id="date_format" name="date_format" type="text" placeholder="%m/%d/%Y %I:%M %p"
+                 value="{{ editing.date_format if editing and editing.date_format else '' }}">
           <span class="hint">Leave blank for automatic parsing.</span>
         </div>
       </div>
@@ -180,7 +214,7 @@
       <div class="field mb-3">
         <label for="body_regex">Body regex</label>
         <textarea id="body_regex" name="body_regex" rows="4" class="mono" required
-          placeholder="charge of (?P&lt;amount&gt;[$\d,.]+)\s+was made at (?P&lt;merchant&gt;.+?)\s+on your card ending (?P&lt;card_ending&gt;\d{4})"></textarea>
+          placeholder="charge of (?P&lt;amount&gt;[$\d,.]+)\s+was made at (?P&lt;merchant&gt;.+?)\s+on your card ending (?P&lt;card_ending&gt;\d{4})">{{- editing.body_regex if editing else '' -}}</textarea>
         <span class="hint">
           Case-insensitive, multiline, dot-matches-newline. This placeholder matches the
           sample body in Settings → Simulate email, so you can paste both to try it out.
@@ -189,16 +223,25 @@
 
       <div class="row gap-3 wrap mb-3">
         <div class="check-row">
-          <input type="checkbox" id="enabled" name="enabled" checked>
+          <input type="checkbox" id="enabled" name="enabled"
+                 {% if not editing or editing.enabled %}checked{% endif %}>
           <label for="enabled">Enabled</label>
         </div>
         <div class="check-row">
-          <input type="checkbox" id="match_is_regex" name="match_is_regex">
+          <input type="checkbox" id="match_is_regex" name="match_is_regex"
+                 {% if editing and editing.match_is_regex %}checked{% endif %}>
           <label for="match_is_regex">Sender/subject are regexes</label>
         </div>
       </div>
 
-      <button class="btn btn-primary" type="submit">Save rule</button>
+      <div class="row gap-2">
+        <button class="btn btn-primary" type="submit">
+          {{ 'Save changes' if editing else 'Add rule' }}
+        </button>
+        {% if editing %}
+          <a class="btn btn-ghost" href="/rules">Cancel</a>
+        {% endif %}
+      </div>
     </form>
   </section>
 

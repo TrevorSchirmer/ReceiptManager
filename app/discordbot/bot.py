@@ -37,7 +37,7 @@ from app.models import (
     TransactionStatus,
     utcnow,
 )
-from app.services import jobs, matching, storage
+from app.services import jobs, matching, shortcode, storage
 from app.services.matching import MatchMethod
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,9 @@ def render_notification(tx: Transaction, tz: str) -> str:
     lines.append(
         f"_Reply to this message with the receipt, or upload it with_ "
         f"`#{tx.short_code}` _in the caption._"
+    )
+    lines.append(
+        "_Anything else you type is saved as a note — who attended, what it was for._"
     )
     return "\n".join(lines)
 
@@ -141,9 +144,17 @@ def _resolve_upload(referenced_message_id: str | None, text: str | None) -> dict
 
 
 def _link_attachments(
-    attachment_ids: list[int], short_code: str, note: str = ""
+    attachment_ids: list[int],
+    short_code: str,
+    hint: str = "",
+    user_note: str = "",
 ) -> dict[str, Any] | None:
-    """Attach captured files to a charge. Idempotent; skips already-linked rows."""
+    """Attach captured files to a charge. Idempotent; skips already-linked rows.
+
+    ``hint`` is a line for the Discord confirmation. ``user_note`` is what the
+    person typed alongside the receipt and belongs on the transaction — "dinner
+    with Sarah and Mike", the context a receipt image alone does not carry.
+    """
     with session_scope() as db:
         tx = db.scalar(select(Transaction).where(Transaction.short_code == short_code))
         if tx is None:
@@ -161,6 +172,10 @@ def _link_attachments(
         if linked:
             tx.status = TransactionStatus.receipt_attached
             tx.matched_at = utcnow()
+            if user_note:
+                # Appended, never replacing: a merchant rule may already have put
+                # something here, and losing it would be silent.
+                tx.notes = f"{tx.notes}\n{user_note}" if tx.notes else user_note
             db.add(tx)
             db.add(
                 AuditLog(
@@ -168,7 +183,8 @@ def _link_attachments(
                     action="receipt.attached",
                     entity="transaction",
                     entity_id=tx.short_code,
-                    detail=f"{linked} file(s) attached",
+                    detail=f"{linked} file(s) attached"
+                   + (f"; note: {user_note[:120]}" if user_note else ""),
                 )
             )
             jobs.enqueue(
@@ -177,7 +193,8 @@ def _link_attachments(
                 payload={
                     "transaction_id": tx.id,
                     "attachment_ids": attachment_ids,
-                    "note": note,
+                    "hint": hint,
+                    "user_note": user_note,
                 },
                 idempotency_key=f"finalize:{tx.id}:{min(attachment_ids)}",
             )
@@ -215,10 +232,14 @@ class ReceiptPicker(discord.ui.View):
         timeout_seconds: float,
         truncated: bool = False,
         prompt_recent: bool = False,
+        user_note: str = "",
     ) -> None:
         super().__init__(timeout=timeout_seconds)
         self.attachment_ids = attachment_ids
         self.uploader_id = uploader_id
+        # Held across the wait: by the time a choice is made the original message
+        # is out of scope, and the note would otherwise be lost.
+        self.user_note = user_note
         self.message: discord.Message | None = None
 
         options = [
@@ -264,7 +285,9 @@ class ReceiptPicker(discord.ui.View):
             )
             return
 
-        result = await run_db(_link_attachments, self.attachment_ids, choice)
+        result = await run_db(
+            _link_attachments, self.attachment_ids, choice, "", self.user_note
+        )
         if result is None:
             await interaction.response.edit_message(
                 content=f"⚠️ Could not find charge `#{choice}`.", view=None
@@ -434,14 +457,18 @@ class ReceiptBot(discord.Client):
         outcome = await run_db(_resolve_upload, referenced, message.content)
         method = MatchMethod(outcome["method"])
 
+        # Whatever was typed alongside the receipt, minus the addressing code.
+        # For a dinner that is "who was there", which the image cannot tell you.
+        user_note = shortcode.strip_codes(message.content or "")[:2000]
+
         if method in (MatchMethod.reply, MatchMethod.code, MatchMethod.sole_open):
-            note = (
+            hint = (
                 "_(only one charge was awaiting a receipt — reply with_ `#code` _to correct)_"
                 if method is MatchMethod.sole_open
                 else ""
             )
             result = await run_db(
-                _link_attachments, attachment_ids, outcome["short_code"], note
+                _link_attachments, attachment_ids, outcome["short_code"], hint, user_note
             )
             if result is None:
                 await _safe_reply(message, "⚠️ That charge no longer exists.")
@@ -459,6 +486,7 @@ class ReceiptBot(discord.Client):
             timeout_seconds=config["timeout_min"] * 60,
             truncated=outcome["truncated"],
             prompt_recent=method is MatchMethod.none_open,
+            user_note=user_note,
         )
         if not outcome["candidates"]:
             await _safe_reply(

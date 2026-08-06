@@ -118,6 +118,14 @@ nothing the caller doesn't already know about themselves.
 **Nothing is ever dropped.** If no rule matches, the charge is still created (as
 `needs attention`, with the raw body kept) and still posted to Discord.
 
+**Notes come from the caption.** Whatever you type alongside the receipt is saved
+on the transaction — `#1042 dinner with Sarah and Mike from Acme` files the
+receipt and records who was there. The `#code` is stripped out; everything else
+is kept. It works when replying too, where the whole message is the note. The
+confirmation echoes it back, so a note that failed to register is visible rather
+than silently lost. Notes are appended, so an existing one is never overwritten,
+and `/note <code> <text>` adds one after the fact.
+
 **Silencing a merchant.** For subscriptions and anything else that will never
 have a receipt worth keeping. Use the button on any charge from that merchant,
 or `/silence <code>` in Discord. It files every outstanding charge from them,

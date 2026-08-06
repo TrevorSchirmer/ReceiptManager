@@ -691,3 +691,181 @@ def test_silencing_also_applies_to_future_charges(tmp_path, monkeypatch):
     with session_scope() as db:
         tx = _simulate(db, "$21.00 at GITHUB.")
         assert tx.status == TransactionStatus.no_receipt_required
+
+
+# --------------------------------------------------------------------------- #
+# Notes typed alongside a receipt
+# --------------------------------------------------------------------------- #
+
+def test_caption_becomes_the_note_with_the_code_removed():
+    """The code is addressing; everything else is what the person meant."""
+    from app.services.shortcode import extract_codes, strip_codes
+
+    caption = "#1042 Dinner with Sarah and Mike from Acme"
+    assert extract_codes(caption) == ["1042"]
+    assert strip_codes(caption) == "Dinner with Sarah and Mike from Acme"
+
+    # A code in the middle is still only addressing.
+    assert strip_codes("Client lunch #1042 - Sarah, Mike") == "Client lunch - Sarah, Mike"
+    # A bare code leaves no note at all.
+    assert strip_codes("#1042") == ""
+    assert strip_codes("   #1042  ") == ""
+    # No code at all (the reply case): the whole caption is the note.
+    assert strip_codes("Dinner with the team") == "Dinner with the team"
+    # Deliberate line breaks survive; stray whitespace does not.
+    assert strip_codes("Attendees:\n  Sarah\n  Mike") == "Attendees:\nSarah\nMike"
+    assert strip_codes("") == ""
+
+
+def _tx_with_receipt(db, code: str = "1000", notes: str | None = None):
+    from app.models import Attachment, Transaction, utcnow
+    from app.services import storage
+
+    tx = Transaction(short_code=code, occurred_at=utcnow(), merchant="RESTAURANT",
+                     amount_minor=8900, currency="USD", notes=notes)
+    db.add(tx)
+    db.flush()
+    stored = storage.store_receipt_bytes(_png_bytes(), original_filename="dinner.png")
+    att = Attachment(transaction_id=None, path=stored.rel_path, mime=stored.mime,
+                     bytes=stored.bytes, sha256=stored.sha256,
+                     original_filename="dinner.png")
+    db.add(att)
+    db.flush()
+    return tx.short_code, att.id
+
+
+def test_note_lands_on_the_transaction_when_the_receipt_is_linked(tmp_path, monkeypatch):
+    from sqlalchemy import select
+
+    from app.db import session_scope
+    from app.discordbot.bot import _link_attachments
+    from app.models import Transaction
+
+    monkeypatch.setenv("RM_DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+    import app.security
+
+    app.config.get_config.cache_clear()
+    app.db._engine = None
+    app.db._SessionFactory = None
+    app.security._fernet = None
+    from app.db import init_db
+
+    init_db()
+
+    with session_scope() as db:
+        code, att_id = _tx_with_receipt(db)
+
+    _link_attachments([att_id], code, "", "Dinner with Sarah and Mike from Acme")
+
+    with session_scope() as db:
+        tx = db.scalar(select(Transaction))
+        assert tx.notes == "Dinner with Sarah and Mike from Acme"
+
+
+def test_note_is_appended_never_overwriting_an_existing_one(tmp_path, monkeypatch):
+    """A merchant rule may already have written here; losing it would be silent."""
+    from sqlalchemy import select
+
+    from app.db import session_scope
+    from app.discordbot.bot import _link_attachments
+    from app.models import Transaction
+
+    monkeypatch.setenv("RM_DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+    import app.security
+
+    app.config.get_config.cache_clear()
+    app.db._engine = None
+    app.db._SessionFactory = None
+    app.security._fernet = None
+    from app.db import init_db
+
+    init_db()
+
+    with session_scope() as db:
+        code, att_id = _tx_with_receipt(db, notes="Recurring subscription")
+
+    _link_attachments([att_id], code, "", "Dinner with Sarah")
+
+    with session_scope() as db:
+        tx = db.scalar(select(Transaction))
+        assert tx.notes == "Recurring subscription\nDinner with Sarah"
+
+
+def test_no_caption_leaves_the_note_untouched(tmp_path, monkeypatch):
+    from sqlalchemy import select
+
+    from app.db import session_scope
+    from app.discordbot.bot import _link_attachments
+    from app.models import Transaction
+
+    monkeypatch.setenv("RM_DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+    import app.security
+
+    app.config.get_config.cache_clear()
+    app.db._engine = None
+    app.db._SessionFactory = None
+    app.security._fernet = None
+    from app.db import init_db
+
+    init_db()
+
+    with session_scope() as db:
+        code, att_id = _tx_with_receipt(db, notes="Pre-existing")
+
+    _link_attachments([att_id], code, "", "")
+
+    with session_scope() as db:
+        assert db.scalar(select(Transaction)).notes == "Pre-existing"
+
+
+def test_note_reaches_the_confirmation_payload(tmp_path, monkeypatch):
+    """The confirmation echoes it, so a dropped note is visible rather than silent."""
+    from sqlalchemy import select
+
+    from app.db import session_scope
+    from app.discordbot.bot import _link_attachments
+    from app.models import Job
+
+    monkeypatch.setenv("RM_DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+    import app.security
+
+    app.config.get_config.cache_clear()
+    app.db._engine = None
+    app.db._SessionFactory = None
+    app.security._fernet = None
+    from app.db import init_db
+
+    init_db()
+
+    with session_scope() as db:
+        code, att_id = _tx_with_receipt(db)
+
+    _link_attachments([att_id], code, "", "Dinner with Sarah")
+
+    with session_scope() as db:
+        job = db.scalar(select(Job).where(Job.kind == "discord.finalize"))
+        assert job.payload["user_note"] == "Dinner with Sarah"
+        # The sole-open hint is a separate field, not conflated with the note.
+        assert job.payload["hint"] == ""
+
+
+def test_picker_carries_the_note_across_the_wait():
+    """The choice can come minutes later, long after the message is out of scope."""
+    from app.discordbot.bot import ReceiptPicker
+
+    picker = ReceiptPicker(
+        attachment_ids=[1],
+        candidates=[("1042", "#1042 · $89.00 · RESTAURANT", "Jul 28")],
+        uploader_id=999,
+        timeout_seconds=900,
+        user_note="Dinner with Sarah and Mike",
+    )
+    assert picker.user_note == "Dinner with Sarah and Mike"

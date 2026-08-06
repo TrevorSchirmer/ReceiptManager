@@ -71,3 +71,19 @@ def extract_codes(text: str) -> list[str]:
     if not text:
         return []
     return [m.group(1) for m in _CODE_RE.finditer(text)]
+
+
+def strip_codes(text: str) -> str:
+    """The same message with its ``#1042`` tokens removed.
+
+    What remains is whatever the person actually wrote — "dinner with Sarah and
+    Mike from Acme" — which is worth keeping on the transaction. The code is
+    addressing information, not content.
+    """
+    if not text:
+        return ""
+    remainder = _CODE_RE.sub(" ", text)
+    # Collapse the whitespace the removal leaves behind, per line, without
+    # flattening a deliberately multi-line note into one paragraph.
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in remainder.splitlines()]
+    return "\n".join(line for line in lines if line).strip()

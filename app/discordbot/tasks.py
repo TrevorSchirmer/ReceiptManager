@@ -197,8 +197,13 @@ async def finalize(payload: dict[str, Any]) -> None:
         # nowhere else, because this is the point at which the bytes have
         # been verified on disk and the message is about to be deleted.
         text = f"✅ {data['summary']} — receipt stored"
-        if note := str(payload.get("note") or ""):
-            text += f"\n{note}"
+        # Echo the note back. Without it there is no way to tell a captured note
+        # from one that was silently dropped.
+        if user_note := str(payload.get("user_note") or ""):
+            first = user_note.splitlines()[0]
+            text += f"\n📝 {first[:200]}"
+        if hint := str(payload.get("hint") or ""):
+            text += f"\n{hint}"
         confirmation = await channel.send(text)
         await run_db(
             _record_confirmation, tx_id, str(confirmation.id), str(confirmation.channel.id)
